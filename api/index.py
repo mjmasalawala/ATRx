@@ -56,8 +56,12 @@ def callback():
     try:
         access_token = exchange_request_token(request_token)
         save_access_token(access_token)
-    except RuntimeError:
-        return redirect("/?login=failed")
+    except RuntimeError as e:
+        # Temporary: surface the real failure reason in the redirect while
+        # diagnosing a login issue. Revert to a bare "/?login=failed" once
+        # the flow is confirmed working end to end.
+        from urllib.parse import quote
+        return redirect(f"/?login=failed&reason={quote(str(e))}")
 
     return redirect("/?login=success")
 

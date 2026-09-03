@@ -287,7 +287,10 @@ document.getElementById("runBtn").addEventListener("click", async () => {
 
 const params = new URLSearchParams(window.location.search);
 if (params.get("login") === "success") banner("info", "Logged in with Zerodha.");
-if (params.get("login") === "failed") banner("error", "Login failed. Please try again.");
+if (params.get("login") === "failed") {
+  const reason = params.get("reason");
+  banner("error", reason ? `Login failed: ${reason}` : "Login failed. Please try again.");
+}
 
 checkStatus();
 </script>
