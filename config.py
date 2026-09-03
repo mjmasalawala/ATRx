@@ -80,18 +80,25 @@ class Config:
     output_dir: Path = BASE_DIR / "output"
     top_n: int = 25
 
-    def load_universe(self) -> list[str]:
-        # Universe now lives in Neon (screener_universe) so it can be
-        # updated from the web deployment; universe.json is kept only as
-        # a fallback for local dev without DATABASE_URL configured, and as
-        # the seed source for scripts/init_db.py.
+    def load_universe(self, tier: str = "large_cap") -> list[str]:
+        # Universe now lives in Neon (screener_universes, one row per
+        # market-cap tier) so it can be updated from the web deployment;
+        # universe.json is kept only as a fallback for local dev without
+        # DATABASE_URL configured -- and only for the default tier, since
+        # it predates tiering and only ever held the large-cap list.
         try:
             import db_store
-            symbols = db_store.load_universe()
+            symbols = db_store.load_universe(tier)
             if symbols:
                 return [s.upper().strip() for s in symbols]
         except Exception as e:
-            logger.warning("Could not load universe from DB, falling back to file: %s", e)
+            logger.warning("Could not load universe (tier=%s) from DB, falling back to file: %s", tier, e)
+
+        if tier != "large_cap":
+            raise RuntimeError(
+                f"No universe found for tier '{tier}' -- the database is unavailable or has no row "
+                "for this tier, and there's no local-file fallback for non-default tiers."
+            )
 
         import json
         try:

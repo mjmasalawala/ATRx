@@ -30,14 +30,23 @@ from token_store import load_access_token, save_access_token
 app = Flask(__name__)
 
 _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
+_STRATEGY2_HTML_PATH = Path(__file__).resolve().parent.parent / "strategy2.html"
+
+
+def _serve_html(path: Path, missing_message: str):
+    try:
+        html = path.read_text(encoding="utf-8")
+    except OSError:
+        return Response(missing_message, status=500)
+    return Response(html, mimetype="text/html")
 
 
 def home():
-    try:
-        html = _INDEX_HTML_PATH.read_text(encoding="utf-8")
-    except OSError:
-        return Response("index.html not found", status=500)
-    return Response(html, mimetype="text/html")
+    return _serve_html(_INDEX_HTML_PATH, "index.html not found")
+
+
+def strategy2():
+    return _serve_html(_STRATEGY2_HTML_PATH, "strategy2.html not found")
 
 
 def login():
@@ -84,6 +93,24 @@ def config_endpoint():
     return jsonify(persisted or CONFIG.to_tunable_dict())
 
 
+# Static fallback so the tier dropdown always has options even if the DB
+# is unreachable -- symbol_count here is informational only (the real
+# count comes from the DB row db_store.list_universe_tiers() reads).
+_FALLBACK_TIERS = [
+    {"tier": "large_cap", "note": "NSE Nifty 100 (large cap)", "symbol_count": None},
+    {"tier": "mid_cap", "note": "NSE Nifty Midcap 150 (mid cap)", "symbol_count": None},
+    {"tier": "small_cap", "note": "NSE Nifty Smallcap 100 (small cap)", "symbol_count": None},
+]
+
+
+def universe_tiers_endpoint():
+    try:
+        tiers = db_store.list_universe_tiers()
+    except Exception:
+        tiers = []
+    return jsonify(tiers or _FALLBACK_TIERS)
+
+
 def run_screener_endpoint():
     try:
         token = load_access_token()
@@ -93,11 +120,13 @@ def run_screener_endpoint():
     if not token:
         return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
 
-    overrides = (request.get_json(silent=True) or {}).get("overrides") or None
+    body = request.get_json(silent=True) or {}
+    overrides = body.get("overrides") or None
+    universe_tier = body.get("universe_tier") or "large_cap"
 
     try:
         kite = get_kite_session_from_token(token)
-        result = run_screener(kite, overrides=overrides)
+        result = run_screener(kite, overrides=overrides, universe_tier=universe_tier)
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:
@@ -135,10 +164,12 @@ def _store_csv_snapshot(rows: list[dict]):
 
 _ROUTES = {
     "": home,
+    "strategy2": strategy2,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
     "config": config_endpoint,
+    "universe-tiers": universe_tiers_endpoint,
     "run-screener": run_screener_endpoint,
 }
 

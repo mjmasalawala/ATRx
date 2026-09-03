@@ -23,7 +23,8 @@ _ENV_VAR_CANDIDATES = (
 )
 
 CONFIG_TABLE = "screener_config"
-UNIVERSE_TABLE = "screener_universe"
+UNIVERSE_TIERS_TABLE = "screener_universes"
+DEFAULT_TIER = "large_cap"
 
 
 def _connection_string() -> str:
@@ -60,21 +61,28 @@ def save_config(params: dict) -> None:
         conn.commit()
 
 
-def load_universe() -> list[str] | None:
+def load_universe(tier: str = DEFAULT_TIER) -> list[str] | None:
     with get_conn() as conn, conn.cursor() as cur:
-        cur.execute(f"SELECT symbols FROM {UNIVERSE_TABLE} WHERE id = 1")
+        cur.execute(f"SELECT symbols FROM {UNIVERSE_TIERS_TABLE} WHERE tier = %s", [tier])
         row = cur.fetchone()
         return row[0] if row else None
 
 
-def save_universe(symbols: list[str], note: str = "") -> None:
+def list_universe_tiers() -> list[dict]:
+    """Returns [{tier, note, symbol_count}, ...] for every tier that has a row."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT tier, note, symbols FROM {UNIVERSE_TIERS_TABLE} ORDER BY tier")
+        return [{"tier": r[0], "note": r[1], "symbol_count": len(r[2])} for r in cur.fetchall()]
+
+
+def save_universe(tier: str, symbols: list[str], note: str = "") -> None:
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             f"""
-            INSERT INTO {UNIVERSE_TABLE} (id, note, symbols, updated_at)
-            VALUES (1, %s, %s, now())
-            ON CONFLICT (id) DO UPDATE SET note = EXCLUDED.note, symbols = EXCLUDED.symbols, updated_at = now()
+            INSERT INTO {UNIVERSE_TIERS_TABLE} (tier, note, symbols, updated_at)
+            VALUES (%s, %s, %s, now())
+            ON CONFLICT (tier) DO UPDATE SET note = EXCLUDED.note, symbols = EXCLUDED.symbols, updated_at = now()
             """,
-            [note, Json(symbols)],
+            [tier, note, Json(symbols)],
         )
         conn.commit()

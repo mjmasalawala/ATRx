@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10131A;
+    --surface: #171B24;
+    --surface-alt: #1D2230;
+    --border: #262B38;
+    --text: #F7F8FA;
+    --text-dim: #B7BECE;
+    --accent: #E0A857;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    flex: none;
+    width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sidebar-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); padding: 0 20px 18px;
+  }
+  .nav-link {
+    display: block; padding: 10px 20px; font-size: 13px; font-weight: 500;
+    color: var(--text-dim); text-decoration: none; border-left: 3px solid transparent;
+  }
+  .nav-link:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .main-content { flex: 1; min-width: 0; }
+
+  header { padding: 28px 32px 20px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .placeholder {
+    padding: 60px 32px;
+    color: var(--text-dim);
+    font-size: 14px;
+    max-width: 480px;
+  }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-title">ATRx</div>
+  <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/strategy2" class="nav-link active">Strategy 2</a>
+</nav>
+
+<div class="main-content">
+
+<header>
+  <h1>Strategy 2</h1>
+</header>
+
+<div class="placeholder">
+  Nothing here yet -- this page is a placeholder for a second strategy.
+</div>
+
+</div>
+</body>
+</html>

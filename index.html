@@ -25,8 +25,32 @@
     color: var(--text);
     font-family: 'Space Grotesk', sans-serif;
     -webkit-font-smoothing: antialiased;
+    display: flex;
+    min-height: 100vh;
   }
   .num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+  .sidebar {
+    flex: none;
+    width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sidebar-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); padding: 0 20px 18px;
+  }
+  .nav-link {
+    display: block; padding: 10px 20px; font-size: 13px; font-weight: 500;
+    color: var(--text-dim); text-decoration: none; border-left: 3px solid transparent;
+  }
+  .nav-link:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .main-content { flex: 1; min-width: 0; }
 
   header {
     padding: 28px 32px 20px;
@@ -184,11 +208,28 @@
   }
   td.level-note.reason-note { color: var(--negative); }
 
+  .tier-field { display: flex; flex-direction: column; gap: 5px; }
+  .tier-field label { font-size: 11px; color: var(--text-dim); }
+  .tier-field select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px;
+    padding: 7px 9px; cursor: pointer; min-width: 200px;
+  }
+  .tier-field select:focus { outline: none; border-color: var(--accent); }
+
   #empty { color: var(--text-dim); font-size: 13px; padding: 0 32px; }
   footer { padding: 20px 32px 32px; color: var(--text-dim); font-size: 12px; line-height: 1.6; max-width: 720px; }
 </style>
 </head>
 <body>
+
+<nav class="sidebar">
+  <div class="sidebar-title">ATRx</div>
+  <a href="/" class="nav-link active">ATRx Screener</a>
+  <a href="/strategy2" class="nav-link">Strategy 2</a>
+</nav>
+
+<div class="main-content">
 
 <header>
   <div>
@@ -196,6 +237,10 @@
     <div class="meta" id="meta">Not run yet.</div>
   </div>
   <div class="actions">
+    <div class="tier-field">
+      <label for="tierSelect">Universe</label>
+      <select id="tierSelect"></select>
+    </div>
     <span id="loginStatus">checking login…</span>
     <button id="loginBtn" class="secondary">Log in with Zerodha</button>
   </div>
@@ -300,7 +345,8 @@ const LEVEL_COLUMNS = [
   { key: "recency_weight", label: "Recency" },
   { key: "meets_criteria", label: "Touch/breach OK" },
   { key: "in_range", label: "In ATRx range" },
-  { key: "backtest_touches", label: "BT n" },
+  { key: "backtest_touches", label: "BT n",
+    tip: "Sample size behind the backtest columns to the right: every historical close within \"Touch band (ATR)\" of this level, not just confirmed pivots. A high hit rate off a low BT n is a coin flip, not an edge -- check this before trusting Hit%/AvgRet%." },
   { key: "hit_rate_3d_pct", label: "Hit% 3d" },
   { key: "avg_fwd_ret_3d_pct", label: "AvgRet% 3d" },
   { key: "hit_rate_5d_pct", label: "Hit% 5d" },
@@ -435,7 +481,7 @@ function levelDetailHtml(symbol, levels) {
   if (levels.length === 0) {
     return `<div class="detail-wrap"><p class="detail-label">No pivot clusters at all were found for ${symbol} in the lookback window.</p></div>`;
   }
-  const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}</th>`).join("");
+  const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
   const rows = levels.map(lvl => {
     const rowClass = lvl.is_candidate ? "level-pass" : "level-fail";
     const cells = LEVEL_COLUMNS.map(c => {
@@ -557,6 +603,23 @@ async function loadConfig() {
   }
 }
 
+const TIER_LABELS = { large_cap: "Large Cap", mid_cap: "Mid Cap", small_cap: "Small Cap" };
+
+async function loadTiers() {
+  const select = document.getElementById("tierSelect");
+  try {
+    const res = await fetch("/api/universe-tiers");
+    const tiers = await res.json();
+    select.innerHTML = tiers.map(t => {
+      const label = TIER_LABELS[t.tier] || t.tier;
+      const count = t.symbol_count != null ? ` (${t.symbol_count})` : "";
+      return `<option value="${escapeHtml(t.tier)}" title="${escapeHtml(t.note || "")}">${escapeHtml(label)}${count}</option>`;
+    }).join("");
+  } catch (e) {
+    select.innerHTML = `<option value="large_cap">Large Cap</option>`;
+  }
+}
+
 document.getElementById("loginBtn").addEventListener("click", () => {
   window.location.href = "/api/login";
 });
@@ -584,10 +647,11 @@ document.getElementById("runBtn").addEventListener("click", async () => {
 
   try {
     const overrides = collectConfigOverrides();
+    const universe_tier = document.getElementById("tierSelect").value || "large_cap";
     const res = await fetch("/api/run-screener", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ overrides }),
+      body: JSON.stringify({ overrides, universe_tier }),
     });
     const data = await res.json();
 
@@ -599,6 +663,7 @@ document.getElementById("runBtn").addEventListener("click", async () => {
     BREAKDOWN = data.screening_breakdown || [];
     meta.innerHTML =
       `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
+      ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
       ` &middot; <span class="num">${data.universe_size}</span> symbols scanned` +
       ` &middot; <span class="num">${data.volatile_count}</span> passed the volatility filter` +
       ` (ATR% &ge; <span class="num">${fmt(data.atr_threshold_pct, 2)}%</span>)` +
@@ -627,7 +692,10 @@ if (params.get("login") === "failed") {
   banner("error", reason ? `Login failed: ${reason}` : "Login failed. Please try again.");
 }
 
+loadTiers();
 checkStatus();
 </script>
+
+</div>
 </body>
 </html>

@@ -189,7 +189,7 @@ def score_candidates(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["score"], reverse=True)
 
 
-def run_screener(kite: KiteConnect, overrides: dict | None = None) -> dict:
+def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier: str = "large_cap") -> dict:
     """
     Runs the full scan against an already-authenticated KiteConnect session
     and returns the results as data (no file I/O, no sys.exit) so it can be
@@ -199,6 +199,9 @@ def run_screener(kite: KiteConnect, overrides: dict | None = None) -> dict:
     duration of this call (restored in `finally`) -- lets the web UI's
     config-confirmation step run with user-adjusted parameters without a
     separate per-request Config instance threaded through every function.
+
+    `universe_tier` selects which market-cap tier (large_cap/mid_cap/
+    small_cap) to screen -- see db_store.load_universe.
     """
     original_config_values = {}
     if overrides:
@@ -209,7 +212,7 @@ def run_screener(kite: KiteConnect, overrides: dict | None = None) -> dict:
             setattr(CONFIG, key, value)
 
     try:
-        result = _run_screener(kite)
+        result = _run_screener(kite, universe_tier)
         _persist_config_used()
         return result
     finally:
@@ -232,8 +235,8 @@ def _persist_config_used() -> None:
         logger.warning("Could not persist config to DB: %s", e)
 
 
-def _run_screener(kite: KiteConnect) -> dict:
-    symbols = CONFIG.load_universe()
+def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap") -> dict:
+    symbols = CONFIG.load_universe(universe_tier)
 
     tokens = resolve_tokens(kite, symbols)
     if not tokens:
@@ -352,6 +355,7 @@ def _run_screener(kite: KiteConnect) -> dict:
 
     return {
         "generated_at": datetime.now().isoformat(),
+        "universe_tier": universe_tier,
         "universe_size": len(symbols),
         "volatile_count": len(volatile_symbols),
         "atr_threshold_pct": round(threshold * 100, 2),

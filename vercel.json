@@ -6,10 +6,12 @@
   },
   "rewrites": [
     { "source": "/", "destination": "/api/index?r=" },
+    { "source": "/strategy2", "destination": "/api/index?r=strategy2" },
     { "source": "/api/login", "destination": "/api/index?r=login" },
     { "source": "/api/callback", "destination": "/api/index?r=callback" },
     { "source": "/api/status", "destination": "/api/index?r=status" },
     { "source": "/api/config", "destination": "/api/index?r=config" },
+    { "source": "/api/universe-tiers", "destination": "/api/index?r=universe-tiers" },
     { "source": "/api/run-screener", "destination": "/api/index?r=run-screener" }
   ]
 }

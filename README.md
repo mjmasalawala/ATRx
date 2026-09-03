@@ -48,17 +48,28 @@ tables. Schema and seed data are plain SQL migrations under `scripts/`,
 run manually and once in Neon's SQL Editor (or via `psql`), in order:
 
 1. `scripts/001_create_screener_tables.sql` -- creates `screener_config`
-   and `screener_universe` (both singleton, one row each).
-2. `scripts/002_seed_screener_data.sql` -- seeds them with config.py's
-   current defaults and universe.json's current symbols. Uses
+   (singleton) and the now-superseded singleton `screener_universe`.
+2. `scripts/002_seed_screener_data.sql` -- seeds config.py's current
+   defaults and universe.json's original symbols. Uses
    `ON CONFLICT DO NOTHING`, so it's safe to run again later without
    clobbering anything the app has since written.
+3. `scripts/003_create_universe_tiers.sql` -- adds `screener_universes`
+   (one row per market-cap tier: `large_cap`, `mid_cap`, `small_cap`,
+   each capped at ~80 symbols from the corresponding NSE index --
+   Nifty 100 / Midcap 150 / Smallcap 100 -- for the same 60s
+   function-timeout reason). This is what the web UI's **Universe**
+   dropdown actually reads from; the old singleton `screener_universe`
+   is no longer read once this migration is applied.
+4. `scripts/004_drop_legacy_universe_table.sql` -- optional cleanup, once
+   003 is confirmed working: drops the now-unused singleton
+   `screener_universe` table from 001/002. Not run automatically or
+   bundled into 003, so removing that data stays a deliberate step.
 
-Add new files here (`003_...sql`, etc.) for any future schema change,
+Add new files here (`005_...sql`, etc.) for any future schema change,
 rather than altering tables by hand. If `DATABASE_URL` isn't set at all
 (e.g. running the CLI locally without Neon configured), both the app and
-the CLI fall back to `universe.json` and `config.py`'s defaults, so local
-dev doesn't require a database.
+the CLI fall back to `universe.json` and `config.py`'s defaults for the
+`large_cap` tier only -- other tiers have no local-file fallback.
 
 In the Kite Connect developer console, set the app's **redirect URL** to
 `https://<your-vercel-domain>/api/callback`.
@@ -362,7 +373,10 @@ backtest_touches = 4
 ```
 `backtest_touches` matters as much as the hit rate itself — 4 historical
 touches is a real signal, but still a small sample. The same 100% hit
-rate on 10+ touches would be a much stronger claim.
+rate on 10+ touches would be a much stronger claim. The web UI's
+per-level drill-down shows this column as **BT n** — it's the sample
+size behind the Hit%/AvgRet% columns next to it, not the same count as
+`touches` (which only counts confirmed pivots, a stricter definition).
 
 ### 3.7 Score and rank against the rest of the day's candidates
 
@@ -462,7 +476,7 @@ raise `score_w_proximity`.
 | `touches` | confirmed pivot lows in the cluster | how many times this was a swing low |
 | `breaches` | closes beyond the breach buffer below the level | how many times the level has meaningfully failed |
 | `recency_weight` | sum of `exp(-age/decay)` across touches | how fresh the evidence for this level is |
-| `backtest_touches` | historical closes within the touch band | sample size behind the two columns below |
+| `backtest_touches` (shown as **BT n** in the web UI) | historical closes within the touch band | sample size behind the two columns below |
 | `hit_rate_3d_pct` / `hit_rate_5d_pct` | % of touches with a positive forward return | how often a bounce actually followed a touch |
 | `avg_fwd_ret_3d_pct` / `avg_fwd_ret_5d_pct` | mean forward return after a touch | average size of the move, when it happened |
 | `score` | composite ranking (section 3.7) | overall rank for the day — higher is stronger by this model's logic |
