@@ -242,8 +242,8 @@ def _run_screener(kite: KiteConnect) -> dict:
     # Fetch enough calendar days to cover the lookback window plus the
     # confirmation buffer pivot detection and the forward-return backtest
     # both need at their edges.
-    buffer_days = CONFIG.pivot_window + CONFIG.atr_period + CONFIG.forward_days_long + 15
-    calendar_days = int((CONFIG.lookback_days + buffer_days) * 1.6)  # trading days -> calendar days
+    buffer_days = CONFIG.pivot_window + CONFIG.atr_period + CONFIG.forward_days_long
+    calendar_days = int((CONFIG.lookback_days + buffer_days) * 1.3)  # trading days -> calendar days
 
     history: dict[str, pd.DataFrame] = {}
     for sym, token in tokens.items():
