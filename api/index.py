@@ -88,6 +88,16 @@ def run_screener_endpoint():
         result = run_screener(kite)
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        # Temporary: run_screener crashed with something other than the
+        # expected exception types above (500 HTML page, no detail). Report
+        # the real type/traceback while diagnosing, then narrow this back
+        # down to the specific exception once the cause is fixed.
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
 
     result["csv_url"] = _store_csv_snapshot(result["top_rows"])
     return jsonify(result)
