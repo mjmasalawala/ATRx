@@ -34,7 +34,7 @@ Environment variables to set in the Vercel project:
 | Variable | Where it comes from |
 |---|---|
 | `KITE_API_KEY`, `KITE_API_SECRET` | Your Kite Connect app |
-| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Vercel Upstash/KV integration |
+| `UPSTASH_REDIS_REST_URL`/`TOKEN` (raw Upstash integration) or `KV_REST_API_URL`/`TOKEN` (Vercel's own KV product) | Vercel Upstash/KV integration -- either naming works |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob integration |
 
 In the Kite Connect developer console, set the app's **redirect URL** to
