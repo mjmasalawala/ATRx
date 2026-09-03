@@ -278,10 +278,6 @@ const CONFIG_GROUPS = [
     { key: "score_breach_penalty", label: "Breach penalty", step: 0.01,
       tip: "Score subtracted per closing breach the level has had. Higher = breached levels are penalized more heavily in the ranking." },
   ]},
-  { label: "Output", fields: [
-    { key: "top_n", label: "Top N results", step: 1,
-      tip: "How many top-ranked candidates are kept in the CSV/summary output. Higher = a longer shortlist; doesn't affect what's screened, only what's kept." },
-  ]},
 ];
 
 const BREAKDOWN_COLUMNS = [
@@ -418,7 +414,7 @@ function collectConfigOverrides() {
   document.querySelectorAll("#configGroups input[data-key]").forEach(input => {
     const key = input.dataset.key;
     const isInt = ["atr_period", "pivot_window", "lookback_days", "min_touches",
-      "max_breaches", "forward_days_short", "forward_days_long", "top_n"].includes(key);
+      "max_breaches", "forward_days_short", "forward_days_long"].includes(key);
     const val = isInt ? parseInt(input.value, 10) : parseFloat(input.value);
     if (!isNaN(val)) overrides[key] = val;
   });
