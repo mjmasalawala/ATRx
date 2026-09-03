@@ -1,5 +1,7 @@
 # ATRx Screener — Support-Level Bounce Strategy
 
+[![GitHub repo](https://img.shields.io/badge/GitHub-mjmasalawala%2FATRx-blue?logo=github)](https://github.com/mjmasalawala/ATRx)
+
 This documents the screener in `screener.py` and the strategy it implements:
 finding volatile stocks trading near a price level they've historically
 respected, on the premise that they tend to bounce from there within the
