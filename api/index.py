@@ -99,23 +99,26 @@ def run_screener_endpoint():
             "traceback": traceback.format_exc(),
         }), 500
 
-    result["csv_url"] = _store_csv_snapshot(result["top_rows"])
+    result["csv_url"], result["_csv_debug_error"] = _store_csv_snapshot(result["top_rows"])
     return jsonify(result)
 
 
 def _store_csv_snapshot(rows: list[dict]):
     if not rows:
-        return None
+        return None, None
     try:
         buf = io.StringIO()
         writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
         pathname = f"atrx/atrx_{datetime.now():%Y%m%d_%H%M}.csv"
-        return upload_csv(pathname, buf.getvalue().encode())
-    except RuntimeError:
-        # Blob storage not configured -- results still return to the UI.
-        return None
+        return upload_csv(pathname, buf.getvalue().encode()), None
+    except Exception as e:
+        # Archival is best-effort -- any failure here (missing token, a bad
+        # Blob API response, a network error) must not break the screener
+        # results the UI is waiting on. _csv_debug_error is temporary, to
+        # see the real reason instead of silently losing the archive.
+        return None, f"{type(e).__name__}: {e}"
 
 
 _ROUTES = {
