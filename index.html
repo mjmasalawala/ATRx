@@ -90,7 +90,46 @@
     gap: 10px 14px;
   }
   .config-field { display: flex; flex-direction: column; gap: 5px; }
+  .config-field .label-row { display: flex; align-items: center; gap: 5px; }
   .config-field label { font-size: 11.5px; color: var(--text-dim); }
+  .tip {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+    font-size: 9.5px;
+    line-height: 1;
+    cursor: help;
+    flex: none;
+  }
+  .tip:hover, .tip:focus { border-color: var(--accent); color: var(--accent); outline: none; }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    font-family: 'Space Grotesk', sans-serif;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.1s ease;
+    z-index: 20;
+    pointer-events: none;
+  }
+  .tip:hover::after, .tip:focus::after { opacity: 1; visibility: visible; }
   .config-field input {
     background: var(--bg);
     border: 1px solid var(--border);
@@ -181,35 +220,54 @@
 <script>
 const CONFIG_GROUPS = [
   { label: "Volatility", fields: [
-    { key: "atr_period", label: "ATR period (days)", step: 1 },
-    { key: "min_atr_percentile", label: "Min ATR percentile", step: 1 },
+    { key: "atr_period", label: "ATR period (days)", step: 1,
+      tip: "Days averaged to measure volatility (ATR). Higher = smoother, slower-reacting reading. Lower = more sensitive to recent price swings." },
+    { key: "min_atr_percentile", label: "Min ATR percentile", step: 1,
+      tip: "Only keeps stocks whose current volatility ranks at/above this percentile within your own universe. Higher = fewer, more volatile candidates survive the first filter." },
   ]},
   { label: "Level detection", fields: [
-    { key: "pivot_window", label: "Pivot window (days)", step: 1 },
-    { key: "lookback_days", label: "Lookback (days)", step: 1 },
-    { key: "cluster_atr_multiple", label: "Cluster ATR multiple", step: 0.1 },
-    { key: "breach_buffer_atr", label: "Breach buffer (ATR)", step: 0.05 },
-    { key: "min_touches", label: "Min touches", step: 1 },
-    { key: "max_breaches", label: "Max breaches", step: 1 },
-    { key: "recency_decay_days", label: "Recency decay (days)", step: 1 },
+    { key: "pivot_window", label: "Pivot window (days)", step: 1,
+      tip: "A low must be the lowest point among this many days on each side to count as a pivot. Higher = fewer, more significant pivots. Lower = more pivots, but noisier." },
+    { key: "lookback_days", label: "Lookback (days)", step: 1,
+      tip: "How far back to search for pivots and breaches. Higher = more history considered, but can surface stale levels the market has moved past." },
+    { key: "cluster_atr_multiple", label: "Cluster ATR multiple", step: 0.1,
+      tip: "Pivots within this many ATRs of each other get merged into one level. Higher = fewer, broader levels. Lower = more, tighter levels." },
+    { key: "breach_buffer_atr", label: "Breach buffer (ATR)", step: 0.05,
+      tip: "A close must be at least this many ATRs below a level to count as a real breach. Higher = more tolerant of small undershoots, fewer breaches counted." },
+    { key: "min_touches", label: "Min touches", step: 1,
+      tip: "Minimum number of pivots in a cluster before it's treated as a validated level. Higher = stricter, fewer but more reliable levels." },
+    { key: "max_breaches", label: "Max breaches", step: 1,
+      tip: "Maximum closing breaches a level can have and still qualify. Higher = more lenient, keeps levels that have broken down before." },
+    { key: "recency_decay_days", label: "Recency decay (days)", step: 1,
+      tip: "Half-life-style decay for weighting older touches less in the recency score. Higher = old touches still count for a lot. Lower = only recent touches matter." },
   ]},
   { label: "Proximity (ATRx range)", fields: [
-    { key: "atrx_lower", label: "ATRx min", step: 0.1 },
-    { key: "atrx_upper", label: "ATRx max", step: 0.1 },
+    { key: "atrx_lower", label: "ATRx min", step: 0.1,
+      tip: "How far BELOW the level (in ATRs) price is still allowed to be and count as \"near\". More negative = allows a deeper poke below the level before it's excluded." },
+    { key: "atrx_upper", label: "ATRx max", step: 0.1,
+      tip: "How far ABOVE the level (in ATRs) price is still allowed to be and count as \"near\". Higher = casts a wider net above the level." },
   ]},
   { label: "Touch backtest", fields: [
-    { key: "touch_band_atr", label: "Touch band (ATR)", step: 0.05 },
-    { key: "forward_days_short", label: "Forward days (short)", step: 1 },
-    { key: "forward_days_long", label: "Forward days (long)", step: 1 },
+    { key: "touch_band_atr", label: "Touch band (ATR)", step: 0.05,
+      tip: "A historical close within this many ATRs of the level counts as a \"touch\" for the backtest, even if it wasn't a confirmed pivot. Higher = more touches counted, larger sample size." },
+    { key: "forward_days_short", label: "Forward days (short)", step: 1,
+      tip: "Trading days ahead used for the short-term forward-return check on each touch. Lower = measures a faster expected bounce." },
+    { key: "forward_days_long", label: "Forward days (long)", step: 1,
+      tip: "Trading days ahead used for the long-term forward-return check on each touch. Higher = looks further out for the payoff, more patience assumed." },
   ]},
   { label: "Scoring weights", fields: [
-    { key: "score_w_return", label: "Weight: return", step: 0.05 },
-    { key: "score_w_proximity", label: "Weight: proximity", step: 0.05 },
-    { key: "score_w_recency", label: "Weight: recency", step: 0.05 },
-    { key: "score_breach_penalty", label: "Breach penalty", step: 0.01 },
+    { key: "score_w_return", label: "Weight: return", step: 0.05,
+      tip: "How much the historical forward-return edge counts toward the final score. Higher = ranking favors levels with a stronger track record of bouncing." },
+    { key: "score_w_proximity", label: "Weight: proximity", step: 0.05,
+      tip: "How much closeness to the level right now counts toward the score. Higher = ranking favors levels price is nearest to today." },
+    { key: "score_w_recency", label: "Weight: recency", step: 0.05,
+      tip: "How much recent validation counts toward the score. Higher = ranking favors levels that were touched more recently." },
+    { key: "score_breach_penalty", label: "Breach penalty", step: 0.01,
+      tip: "Score subtracted per closing breach the level has had. Higher = breached levels are penalized more heavily in the ranking." },
   ]},
   { label: "Output", fields: [
-    { key: "top_n", label: "Top N results", step: 1 },
+    { key: "top_n", label: "Top N results", step: 1,
+      tip: "How many top-ranked candidates are kept in the CSV/summary output. Higher = a longer shortlist; doesn't affect what's screened, only what's kept." },
   ]},
 ];
 
@@ -266,6 +324,15 @@ function clearBanner() {
   el.textContent = "";
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function renderConfigForm(values) {
   const container = document.getElementById("configGroups");
   container.innerHTML = "";
@@ -284,7 +351,10 @@ function renderConfigForm(values) {
       const field = document.createElement("div");
       field.className = "config-field";
       field.innerHTML = `
-        <label for="cfg_${f.key}">${f.label}</label>
+        <div class="label-row">
+          <label for="cfg_${f.key}">${f.label}</label>
+          <span class="tip" tabindex="0" data-tip="${escapeHtml(f.tip || "")}">?</span>
+        </div>
         <input id="cfg_${f.key}" type="number" step="${f.step}" data-key="${f.key}">
       `;
       grid.appendChild(field);
