@@ -93,6 +93,15 @@ The rest of this document walks through every one of those steps in the
 order they run, using one running worked example throughout, so you can
 see exactly what number produces what decision at each stage.
 
+On the web deployment, none of this filtering is a black box: every
+symbol that clears the volatility filter gets a row in the results table
+regardless of whether it ends up producing a candidate, expandable to
+show *every* pivot cluster found for it -- including ones that got
+rejected -- color-coded green (qualifies today) or red (doesn't, with the
+specific reason: too few touches, too many breaches, or too far from
+price). "No candidates matched" is never a dead end; you can always see
+exactly which levels almost qualified and by how much.
+
 ---
 
 ## 3. Worked example, start to finish

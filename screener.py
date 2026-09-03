@@ -79,56 +79,84 @@ def fetch_history(kite: KiteConnect, token: int, calendar_days: int) -> pd.DataF
     return df[["timestamp", "open", "high", "low", "close", "volume"]]
 
 
-def analyze_symbol(symbol: str, candles: pd.DataFrame, only_near: bool = True):
-    """
-    Returns (atr_pct, rows) or (None, []) if not enough data.
-
-    By default (only_near=True) rows cover only levels price is currently
-    near (the ATRx filter) -- these are the screener's actual candidates.
-    With only_near=False, every validated level is returned regardless of
-    current proximity, each tagged `in_range`, so a symbol's full picture
-    of support levels can be inspected, not just the one that qualified.
-    """
+def current_atr_and_price(candles: pd.DataFrame) -> tuple[float, float] | None:
+    """Returns (current_atr, current_price), or None if there's not enough data."""
     atr_series = average_true_range_series(candles, CONFIG.atr_period)
-    candles = candles.assign(atr=atr_series).dropna(subset=["atr"]).reset_index(drop=True)
+    candles = candles.assign(atr=atr_series).dropna(subset=["atr"])
     if candles.empty:
-        return None, []
-
+        return None
     current_atr = float(candles["atr"].iloc[-1])
     current_price = float(candles["close"].iloc[-1])
     if current_atr <= 0 or current_price <= 0:
-        return None, []
+        return None
+    return current_atr, current_price
 
-    atr_pct = current_atr / current_price
+
+def _rejection_reasons(lvl, atrx: float, in_range: bool) -> list[str]:
+    reasons = []
+    if lvl.touches < CONFIG.min_touches:
+        reasons.append(f"only {lvl.touches} touch{'es' if lvl.touches != 1 else ''} (needs ≥{CONFIG.min_touches})")
+    if lvl.breaches > CONFIG.max_breaches:
+        reasons.append(f"{lvl.breaches} breach{'es' if lvl.breaches != 1 else ''} (max {CONFIG.max_breaches} allowed)")
+    if not in_range:
+        side = "below" if atrx < CONFIG.atrx_lower else "above"
+        reasons.append(
+            f"ATRx {atrx:.2f} is {side} the allowed range ({CONFIG.atrx_lower} to {CONFIG.atrx_upper})"
+        )
+    return reasons
+
+
+def build_symbol_breakdown(symbol: str, candles: pd.DataFrame) -> dict:
+    """
+    The full screening picture for one symbol: every clustered level found
+    (whether or not it's currently a usable candidate) with its raw pivots,
+    proximity, and backtest stats -- not just the level(s) that happened to
+    qualify. `score` is filled in later, once score_candidates() has run
+    over every symbol's candidate levels together (it's a relative ranking,
+    not computable per-level in isolation).
+    """
+    atr_and_price = current_atr_and_price(candles)
+    if atr_and_price is None:
+        return {"symbol": symbol, "status": "insufficient_data", "levels": []}
+    current_atr, current_price = atr_and_price
+
     levels = build_levels(candles, current_atr)
 
-    rows = []
+    level_rows = []
     for lvl in levels:
         atrx = (current_price - lvl.price) / current_atr
         in_range = CONFIG.atrx_lower <= atrx <= CONFIG.atrx_upper
-        if only_near and not in_range:
-            continue
-
+        is_candidate = lvl.meets_criteria and in_range
         stats = backtest_level(candles, lvl, current_atr)
-        rows.append({
-            "symbol": symbol,
-            "current_price": round(current_price, 2),
+        level_rows.append({
             "level": round(lvl.price, 2),
             "atrx": round(atrx, 2),
-            "atr_pct": round(atr_pct * 100, 2),
             "touches": lvl.touches,
             "breaches": lvl.breaches,
             "recency_weight": round(lvl.recency_weight, 2),
+            "meets_criteria": lvl.meets_criteria,
             "in_range": in_range,
+            "is_candidate": is_candidate,
+            "rejection_reasons": [] if is_candidate else _rejection_reasons(lvl, atrx, in_range),
             "backtest_touches": stats.n_touches,
             "hit_rate_3d_pct": None if stats.hit_rate_short is None else round(stats.hit_rate_short, 1),
             "avg_fwd_ret_3d_pct": None if stats.avg_fwd_ret_short is None else round(stats.avg_fwd_ret_short, 2),
             "hit_rate_5d_pct": None if stats.hit_rate_long is None else round(stats.hit_rate_long, 1),
             "avg_fwd_ret_5d_pct": None if stats.avg_fwd_ret_long is None else round(stats.avg_fwd_ret_long, 2),
+            "score": None,
+            "pivots": [{"date": p["date"].strftime("%Y-%m-%d"), "price": round(p["price"], 2)}
+                       for p in lvl.pivots],
         })
 
-    rows.sort(key=lambda r: abs(r["atrx"]))
-    return atr_pct, rows
+    level_rows.sort(key=lambda r: abs(r["atrx"]))
+
+    return {
+        "symbol": symbol,
+        "status": "screened",
+        "current_price": round(current_price, 2),
+        "atr_pct": round((current_atr / current_price) * 100, 2),
+        "levels": level_rows,
+    }
 
 
 def score_candidates(rows: list[dict]) -> list[dict]:
@@ -225,49 +253,110 @@ def _run_screener(kite: KiteConnect) -> dict:
     if not history:
         raise RuntimeError("Could not fetch history for any symbol.")
 
-    # Pass 1: current ATR% for every symbol, to define "volatile" relative
-    # to this universe rather than with an arbitrary fixed number.
-    atr_pcts = {}
+    # Pass 1: current ATR% for every symbol (cheap -- no level detection or
+    # backtesting yet), to define "volatile" relative to this universe
+    # rather than with an arbitrary fixed number.
+    atr_pcts: dict[str, float] = {}
+    prices: dict[str, float] = {}
     for sym, candles in history.items():
-        atr_pct, _ = analyze_symbol(sym, candles)
-        if atr_pct is not None:
-            atr_pcts[sym] = atr_pct
+        result = current_atr_and_price(candles)
+        if result is not None:
+            current_atr, current_price = result
+            atr_pcts[sym] = current_atr / current_price
+            prices[sym] = current_price
 
     if not atr_pcts:
         raise RuntimeError("Could not compute ATR for any symbol.")
 
     threshold = np.percentile(list(atr_pcts.values()), CONFIG.min_atr_percentile)
-    volatile_symbols = [s for s, v in atr_pcts.items() if v >= threshold]
+    volatile_symbols = {s for s, v in atr_pcts.items() if v >= threshold}
     logger.info(
         "%d/%d symbols pass the volatility filter (ATR%% >= %.2f%%, the %.0fth percentile).",
         len(volatile_symbols), len(atr_pcts), threshold * 100, CONFIG.min_atr_percentile,
     )
 
-    # Pass 2: full level detection + backtest, volatile symbols only.
+    def percentile_rank(sym: str) -> float:
+        v = atr_pcts[sym]
+        return round(sum(1 for other in atr_pcts.values() if other <= v) / len(atr_pcts) * 100, 1)
+
+    # Every symbol in the universe gets a row in the breakdown, regardless
+    # of how far it got -- this is what makes "no candidates" explainable
+    # instead of just a dead end.
+    screening_breakdown: list[dict] = []
+    for sym in symbols:
+        if sym not in tokens:
+            screening_breakdown.append({"symbol": sym, "status": "symbol_not_found"})
+        elif sym not in history:
+            screening_breakdown.append({"symbol": sym, "status": "fetch_failed"})
+        elif sym not in atr_pcts:
+            screening_breakdown.append({"symbol": sym, "status": "insufficient_data"})
+        elif sym not in volatile_symbols:
+            screening_breakdown.append({
+                "symbol": sym,
+                "status": "below_volatility_threshold",
+                "current_price": round(prices[sym], 2),
+                "atr_pct": round(atr_pcts[sym] * 100, 2),
+                "atr_percentile_rank": percentile_rank(sym),
+            })
+
+    # Pass 2: full level detection + backtest, volatile symbols only -- the
+    # expensive part, but it's all local computation (no extra Kite calls),
+    # so doing it for every volatile symbol instead of only eventual
+    # candidates doesn't meaningfully add to the run's wall-clock time.
     all_rows = []
     for sym in volatile_symbols:
-        _, rows = analyze_symbol(sym, history[sym])
-        all_rows.extend(rows)
+        breakdown = build_symbol_breakdown(sym, history[sym])
+        breakdown["atr_percentile_rank"] = percentile_rank(sym)
+        screening_breakdown.append(breakdown)
+
+        for lvl in breakdown["levels"]:
+            if lvl["is_candidate"]:
+                row = {"symbol": sym, "current_price": breakdown["current_price"],
+                       "atr_pct": breakdown["atr_pct"]}
+                row.update({k: v for k, v in lvl.items()
+                            if k not in ("meets_criteria", "in_range", "is_candidate",
+                                         "rejection_reasons", "pivots")})
+                all_rows.append(row)
 
     ranked_all = score_candidates(all_rows)
 
-    # For every symbol that made the cut, also compute EVERY validated
-    # level (not just the one(s) near price) so the UI can show a
-    # drill-down of the full support-level picture behind a result, not
-    # just the level that happened to qualify.
-    levels_detail = {}
-    for sym in {r["symbol"] for r in ranked_all}:
-        _, all_levels = analyze_symbol(sym, history[sym], only_near=False)
-        levels_detail[sym] = all_levels
+    # score_candidates() only makes sense computed once across every
+    # candidate level together (it's a relative ranking), so map the
+    # scores it produced back onto the matching levels nested in
+    # screening_breakdown, which were built before scores existed.
+    score_lookup = {(r["symbol"], r["level"]): r["score"] for r in ranked_all}
+    for breakdown in screening_breakdown:
+        for lvl in breakdown.get("levels", []):
+            if lvl["is_candidate"]:
+                lvl["score"] = score_lookup.get((breakdown["symbol"], lvl["level"]))
+
+    # Best candidates first, then screened symbols with no qualifying level
+    # (closest miss first), then symbols that never passed volatility.
+    STATUS_ORDER = {"screened": 0, "below_volatility_threshold": 1, "insufficient_data": 2,
+                     "fetch_failed": 3, "symbol_not_found": 4}
+
+    def sort_key(b: dict):
+        candidate_scores = [l["score"] for l in b.get("levels", []) if l["is_candidate"]]
+        best_score = max(candidate_scores) if candidate_scores else None
+        closest_miss = min((abs(l["atrx"]) for l in b.get("levels", [])), default=999)
+        return (
+            STATUS_ORDER.get(b["status"], 9),
+            0 if best_score is not None else 1,
+            -(best_score or 0),
+            closest_miss,
+        )
+
+    screening_breakdown.sort(key=sort_key)
 
     return {
         "generated_at": datetime.now().isoformat(),
         "universe_size": len(symbols),
         "volatile_count": len(volatile_symbols),
+        "atr_threshold_pct": round(threshold * 100, 2),
         "candidate_count": len(ranked_all),
         "rows": ranked_all,
         "top_rows": ranked_all[:CONFIG.top_n],
-        "levels_detail": levels_detail,
+        "screening_breakdown": screening_breakdown,
     }
 
 

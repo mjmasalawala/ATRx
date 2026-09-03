@@ -22,7 +22,8 @@ class Level:
     touches: int
     breaches: int
     recency_weight: float
-    pivot_dates: list = field(default_factory=list)
+    meets_criteria: bool = False   # touches >= min_touches and breaches <= max_breaches
+    pivots: list = field(default_factory=list)   # [{"date": Timestamp, "price": float}, ...]
 
 
 def find_pivot_lows(candles: pd.DataFrame, window: int) -> pd.DataFrame:
@@ -73,7 +74,14 @@ def count_breaches(candles: pd.DataFrame, level_price: float, current_atr: float
 
 
 def build_levels(candles: pd.DataFrame, current_atr: float) -> list[Level]:
-    """Full pipeline: pivots -> clusters -> scored, validated levels."""
+    """
+    Full pipeline: pivots -> clusters -> scored levels.
+
+    Returns EVERY cluster found, not just the ones that meet min_touches/
+    max_breaches -- each is tagged `meets_criteria` instead of being
+    silently dropped, so callers that need to explain a screening result
+    (not just produce one) can see the clusters that almost qualified.
+    """
     pivots = find_pivot_lows(candles, CONFIG.pivot_window)
     if pivots.empty:
         return []
@@ -89,17 +97,23 @@ def build_levels(candles: pd.DataFrame, current_atr: float) -> list[Level]:
         group = pivots.loc[group_idx]
         level_price = float(group["low"].median())
         breaches = count_breaches(candles, level_price, current_atr, CONFIG.breach_buffer_atr)
+        touches = len(group)
 
         ages_days = (latest_date - pd.to_datetime(group["timestamp"])).dt.days
         recency_weight = float(np.exp(-ages_days / CONFIG.recency_decay_days).sum())
 
+        pivots_in_group = [
+            {"date": ts, "price": float(low)}
+            for ts, low in zip(pd.to_datetime(group["timestamp"]), group["low"])
+        ]
+
         levels.append(Level(
             price=level_price,
-            touches=len(group),
+            touches=touches,
             breaches=breaches,
             recency_weight=recency_weight,
-            pivot_dates=pd.to_datetime(group["timestamp"]).tolist(),
+            meets_criteria=touches >= CONFIG.min_touches and breaches <= CONFIG.max_breaches,
+            pivots=pivots_in_group,
         ))
 
-    return [lvl for lvl in levels
-            if lvl.touches >= CONFIG.min_touches and lvl.breaches <= CONFIG.max_breaches]
+    return levels
