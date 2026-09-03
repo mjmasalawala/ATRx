@@ -10,6 +10,7 @@ import io
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -21,6 +22,20 @@ from screener import run_screener
 from token_store import load_access_token, save_access_token
 
 app = Flask(__name__)
+
+_INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
+
+
+@app.route("/")
+def home():
+    # Served here rather than relying on Vercel's static-file auto-detection,
+    # which pyproject.toml's presence can bypass for a Python "framework"
+    # deployment.
+    try:
+        html = _INDEX_HTML_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return Response("index.html not found", status=500)
+    return Response(html, mimetype="text/html")
 
 
 @app.route("/api/login")
