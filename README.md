@@ -28,6 +28,11 @@ infrastructure beyond the Kite Connect app itself:
 - **Vercel Blob** (add the Vercel Blob storage integration) — every run's
   top-N CSV is saved here for later analytics, since it can't be written to
   a local folder the way the CLI does.
+- **Neon Postgres** — holds the trading universe (`screener_universe`,
+  replacing `universe.json` as the source of truth on the web deployment)
+  and the last-used screening parameters (`screener_config`), so the
+  config-review panel starts from what you actually ran last time instead
+  of always config.py's hardcoded defaults.
 
 Environment variables to set in the Vercel project:
 
@@ -36,6 +41,24 @@ Environment variables to set in the Vercel project:
 | `KITE_API_KEY`, `KITE_API_SECRET` | Your Kite Connect app |
 | `UPSTASH_REDIS_REST_URL`/`TOKEN` (raw Upstash integration) or `KV_REST_API_URL`/`TOKEN` (Vercel's own KV product) | Vercel Upstash/KV integration -- either naming works |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob integration |
+| `DATABASE_URL` (or `POSTGRES_URL` / `DATABASE_URL_UNPOOLED` / `POSTGRES_PRISMA_URL` -- `db_store.py` checks all four) | Neon integration |
+
+`db_store.py` only ever reads/writes rows -- it never creates or alters
+tables. Schema and seed data are plain SQL migrations under `scripts/`,
+run manually and once in Neon's SQL Editor (or via `psql`), in order:
+
+1. `scripts/001_create_screener_tables.sql` -- creates `screener_config`
+   and `screener_universe` (both singleton, one row each).
+2. `scripts/002_seed_screener_data.sql` -- seeds them with config.py's
+   current defaults and universe.json's current symbols. Uses
+   `ON CONFLICT DO NOTHING`, so it's safe to run again later without
+   clobbering anything the app has since written.
+
+Add new files here (`003_...sql`, etc.) for any future schema change,
+rather than altering tables by hand. If `DATABASE_URL` isn't set at all
+(e.g. running the CLI locally without Neon configured), both the app and
+the CLI fall back to `universe.json` and `config.py`'s defaults, so local
+dev doesn't require a database.
 
 In the Kite Connect developer console, set the app's **redirect URL** to
 `https://<your-vercel-domain>/api/callback`.

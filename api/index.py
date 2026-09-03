@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, Response, jsonify, redirect, request
 
+import db_store
 from blob_store import upload_csv
 from config import CONFIG
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
@@ -76,7 +77,11 @@ def status_endpoint():
 
 
 def config_endpoint():
-    return jsonify(CONFIG.to_tunable_dict())
+    try:
+        persisted = db_store.load_config()
+    except Exception:
+        persisted = None
+    return jsonify(persisted or CONFIG.to_tunable_dict())
 
 
 def run_screener_endpoint():

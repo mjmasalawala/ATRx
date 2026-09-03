@@ -179,10 +179,27 @@ def run_screener(kite: KiteConnect, overrides: dict | None = None) -> dict:
             setattr(CONFIG, key, value)
 
     try:
-        return _run_screener(kite)
+        result = _run_screener(kite)
+        _persist_config_used()
+        return result
     finally:
         for key, value in original_config_values.items():
             setattr(CONFIG, key, value)
+
+
+def _persist_config_used() -> None:
+    """
+    Saves whatever CONFIG.TUNABLE_FIELDS values were actually used for a
+    successful run to Neon, so the next login's config-review panel starts
+    from the last-used parameters instead of always config.py's defaults.
+    Non-fatal if the DB isn't configured/reachable -- a run must not fail
+    just because this bookkeeping step did.
+    """
+    try:
+        import db_store
+        db_store.save_config(CONFIG.to_tunable_dict())
+    except Exception as e:
+        logger.warning("Could not persist config to DB: %s", e)
 
 
 def _run_screener(kite: KiteConnect) -> dict:

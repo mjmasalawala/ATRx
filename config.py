@@ -7,11 +7,13 @@ orders. All the tunable numbers live here so the detection/scoring logic
 never needs to change when you want to experiment with different settings.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
+logger = logging.getLogger("atrx.config")
 
 
 @dataclass
@@ -79,6 +81,18 @@ class Config:
     top_n: int = 25
 
     def load_universe(self) -> list[str]:
+        # Universe now lives in Neon (screener_universe) so it can be
+        # updated from the web deployment; universe.json is kept only as
+        # a fallback for local dev without DATABASE_URL configured, and as
+        # the seed source for scripts/init_db.py.
+        try:
+            import db_store
+            symbols = db_store.load_universe()
+            if symbols:
+                return [s.upper().strip() for s in symbols]
+        except Exception as e:
+            logger.warning("Could not load universe from DB, falling back to file: %s", e)
+
         import json
         try:
             with open(self.universe_file, "r") as f:
@@ -89,8 +103,8 @@ class Config:
             return [s.upper().strip() for s in symbols]
         except FileNotFoundError:
             raise FileNotFoundError(
-                f"{self.universe_file} not found. Create it with your "
-                'trading universe, e.g. {"symbols": ["RELIANCE", "TCS"]}'
+                f"{self.universe_file} not found, and no universe is set in the database. "
+                'Create it with your trading universe, e.g. {"symbols": ["RELIANCE", "TCS"]}'
             )
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"universe.json is invalid: {e}")
