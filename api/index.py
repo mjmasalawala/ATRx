@@ -38,6 +38,19 @@ def home():
     return Response(html, mimetype="text/html")
 
 
+@app.errorhandler(404)
+def debug_404(e):
+    # Temporary: shows exactly what path/headers Vercel's rewrite delivers
+    # to this function for ANY unmatched request, to diagnose routing that
+    # otherwise 404s silently.
+    return jsonify({
+        "request_path": request.path,
+        "full_path": request.full_path,
+        "url": request.url,
+        "headers": dict(request.headers),
+    }), 404
+
+
 @app.route("/api/login")
 def login():
     try:
