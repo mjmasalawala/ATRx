@@ -24,11 +24,17 @@ def upload_csv(pathname: str, content: bytes) -> str:
         f"{BLOB_BASE_URL}/{pathname}",
         headers={
             "Authorization": f"Bearer {BLOB_TOKEN}",
+            "x-api-version": "7",
             "x-content-type": "text/csv",
             "x-add-random-suffix": "0",
         },
         data=content,
         timeout=20,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        # Vercel Blob's REST API isn't officially documented for non-JS
+        # callers -- surface the real response body on failure rather than
+        # a bare status code, since the exact required headers/shape have
+        # had to be reverse-engineered.
+        raise RuntimeError(f"Blob upload failed ({resp.status_code}): {resp.text[:500]}")
     return resp.json().get("url")
