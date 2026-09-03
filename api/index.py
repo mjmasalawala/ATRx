@@ -1,8 +1,12 @@
 """
-Single Flask app serving all /api/* routes. Vercel's current Python
-runtime builds one WSGI entrypoint per project (declared in
-pyproject.toml), not one function per file, so every route lives here and
-Flask does the internal dispatch.
+Single Flask app backing every route on the deployed site. Vercel's current
+Python runtime builds one WSGI entrypoint per project (declared in
+pyproject.toml), and its rewrite mechanism was found to flatten every
+request's path to this function's own route ("/api/index") rather than
+preserving the original path in the WSGI environ -- so Flask's normal
+path-based @app.route dispatch can't tell requests apart. Instead, each
+vercel.json rewrite rule appends the intended route as a `?r=` query
+param, and this module dispatches on that explicitly.
 """
 
 import csv
@@ -26,11 +30,7 @@ app = Flask(__name__)
 _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
 
 
-@app.route("/")
 def home():
-    # Served here rather than relying on Vercel's static-file auto-detection,
-    # which pyproject.toml's presence can bypass for a Python "framework"
-    # deployment.
     try:
         html = _INDEX_HTML_PATH.read_text(encoding="utf-8")
     except OSError:
@@ -38,20 +38,6 @@ def home():
     return Response(html, mimetype="text/html")
 
 
-@app.errorhandler(404)
-def debug_404(e):
-    # Temporary: shows exactly what path/headers Vercel's rewrite delivers
-    # to this function for ANY unmatched request, to diagnose routing that
-    # otherwise 404s silently.
-    return jsonify({
-        "request_path": request.path,
-        "full_path": request.full_path,
-        "url": request.url,
-        "headers": dict(request.headers),
-    }), 404
-
-
-@app.route("/api/login")
 def login():
     try:
         url = build_login_url()
@@ -60,7 +46,6 @@ def login():
     return redirect(url)
 
 
-@app.route("/api/callback")
 def callback():
     status = request.args.get("status")
     request_token = request.args.get("request_token")
@@ -77,8 +62,7 @@ def callback():
     return redirect("/?login=success")
 
 
-@app.route("/api/status")
-def status():
+def status_endpoint():
     try:
         token = load_access_token()
     except RuntimeError:
@@ -86,7 +70,6 @@ def status():
     return jsonify({"logged_in": bool(token)})
 
 
-@app.route("/api/run-screener", methods=["GET", "POST"])
 def run_screener_endpoint():
     try:
         token = load_access_token()
@@ -119,3 +102,21 @@ def _store_csv_snapshot(rows: list[dict]):
     except RuntimeError:
         # Blob storage not configured -- results still return to the UI.
         return None
+
+
+_ROUTES = {
+    "": home,
+    "login": login,
+    "callback": callback,
+    "status": status_endpoint,
+    "run-screener": run_screener_endpoint,
+}
+
+
+@app.route("/api/index", methods=["GET", "POST"])
+def dispatch():
+    route = request.args.get("r", "")
+    handler = _ROUTES.get(route)
+    if handler is None:
+        return jsonify({"error": "not found", "route": route}), 404
+    return handler()
