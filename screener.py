@@ -148,25 +148,17 @@ def score_candidates(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["score"], reverse=True)
 
 
-def main():
-    setup_logging()
-
-    try:
-        symbols = CONFIG.load_universe()
-    except (FileNotFoundError, ValueError) as e:
-        logger.critical("Could not load universe: %s", e)
-        sys.exit(1)
-
-    try:
-        kite = get_kite_session()
-    except RuntimeError as e:
-        logger.critical("Authentication failed: %s", e)
-        sys.exit(1)
+def run_screener(kite: KiteConnect) -> dict:
+    """
+    Runs the full scan against an already-authenticated KiteConnect session
+    and returns the results as data (no file I/O, no sys.exit) so it can be
+    reused from both the CLI entrypoint and the web API handler.
+    """
+    symbols = CONFIG.load_universe()
 
     tokens = resolve_tokens(kite, symbols)
     if not tokens:
-        logger.critical("No valid symbols to analyze.")
-        sys.exit(1)
+        raise RuntimeError("No valid symbols to analyze.")
 
     # Fetch enough calendar days to cover the lookback window plus the
     # confirmation buffer pivot detection and the forward-return backtest
@@ -182,8 +174,7 @@ def main():
         time_module.sleep(1.0 / 3.0)  # respect Kite's 3 req/sec historical limit
 
     if not history:
-        logger.critical("Could not fetch history for any symbol.")
-        sys.exit(1)
+        raise RuntimeError("Could not fetch history for any symbol.")
 
     # Pass 1: current ATR% for every symbol, to define "volatile" relative
     # to this universe rather than with an arbitrary fixed number.
@@ -194,8 +185,7 @@ def main():
             atr_pcts[sym] = atr_pct
 
     if not atr_pcts:
-        logger.critical("Could not compute ATR for any symbol.")
-        sys.exit(1)
+        raise RuntimeError("Could not compute ATR for any symbol.")
 
     threshold = np.percentile(list(atr_pcts.values()), CONFIG.min_atr_percentile)
     volatile_symbols = [s for s, v in atr_pcts.items() if v >= threshold]
@@ -212,6 +202,32 @@ def main():
 
     ranked_all = score_candidates(all_rows)
 
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "universe_size": len(symbols),
+        "volatile_count": len(volatile_symbols),
+        "candidate_count": len(ranked_all),
+        "rows": ranked_all,
+        "top_rows": ranked_all[:CONFIG.top_n],
+    }
+
+
+def main():
+    setup_logging()
+
+    try:
+        kite = get_kite_session()
+    except RuntimeError as e:
+        logger.critical("Authentication failed: %s", e)
+        sys.exit(1)
+
+    try:
+        result = run_screener(kite)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        logger.critical(str(e))
+        sys.exit(1)
+
+    ranked_all = result["rows"]
     if not ranked_all:
         logger.info("No candidates matched all filters today.")
         return
@@ -219,7 +235,7 @@ def main():
     CONFIG.output_dir.mkdir(parents=True, exist_ok=True)
 
     # CSV keeps the trimmed top_n -- a quick, ready-to-open shortlist.
-    ranked_top = ranked_all[:CONFIG.top_n]
+    ranked_top = result["top_rows"]
     out_file = CONFIG.output_dir / f"atrx_{datetime.now():%Y%m%d_%H%M}.csv"
     with open(out_file, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(ranked_top[0].keys()))
@@ -230,7 +246,7 @@ def main():
     # the whole point is to let you sort/filter it yourself.
     try:
         html_path = generate_html_report(
-            ranked_all, universe_size=len(symbols), volatile_count=len(volatile_symbols)
+            ranked_all, universe_size=result["universe_size"], volatile_count=result["volatile_count"]
         )
         print(f"\n{len(ranked_all)} candidates -> HTML report: {html_path}")
     except OSError:

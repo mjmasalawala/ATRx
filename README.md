@@ -12,6 +12,40 @@ is a CSV + console table meant for you to manually review before trading.
 
 ---
 
+## 0. Web deployment (Vercel)
+
+Besides the local CLI (`python screener.py`), this repo also deploys as a
+small web app: a static page (`index.html`) with a "Run Screener" button
+that calls Python serverless functions under `api/`.
+
+Because Kite's login is an interactive OAuth redirect and Vercel functions
+have no persistent filesystem, the web version needs two extra pieces of
+infrastructure beyond the Kite Connect app itself:
+
+- **Upstash Redis** (add the Vercel "Upstash" / "KV" integration, or bring
+  your own) — holds today's Kite access token between the login step
+  (`/api/callback`) and the screener run (`/api/run-screener`).
+- **Vercel Blob** (add the Vercel Blob storage integration) — every run's
+  top-N CSV is saved here for later analytics, since it can't be written to
+  a local folder the way the CLI does.
+
+Environment variables to set in the Vercel project:
+
+| Variable | Where it comes from |
+|---|---|
+| `KITE_API_KEY`, `KITE_API_SECRET` | Your Kite Connect app |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Vercel Upstash/KV integration |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob integration |
+
+In the Kite Connect developer console, set the app's **redirect URL** to
+`https://<your-vercel-domain>/api/callback`.
+
+Flow on the page: **Log in with Zerodha** → Kite login → redirected back to
+`/api/callback`, which exchanges the request token and stores the access
+token in Redis → **Run Screener** calls `/api/run-screener`, which reads
+that token, runs the same logic as the CLI, renders results in the page,
+and uploads a CSV snapshot to Blob storage.
+
 ## 1. The idea in one sentence
 
 Volatile stocks develop price levels that repeatedly act as a floor —
