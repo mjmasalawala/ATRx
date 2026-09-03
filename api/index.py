@@ -104,15 +104,11 @@ _FALLBACK_TIERS = [
 
 
 def universe_tiers_endpoint():
-    # Temporary: bypasses the fallback entirely and reports exactly what
-    # the DB query did -- an exception, or a successful query that simply
-    # found zero rows (which the normal `tiers or _FALLBACK_TIERS` masks
-    # identically to a real error) -- to diagnose why tiers aren't showing.
     try:
         tiers = db_store.list_universe_tiers()
-    except Exception as e:
-        return jsonify({"debug": "exception", "error": f"{type(e).__name__}: {e}"}), 500
-    return jsonify({"debug": "query_ok", "row_count": len(tiers), "tiers": tiers})
+    except Exception:
+        tiers = []
+    return jsonify(tiers or _FALLBACK_TIERS)
 
 
 def run_screener_endpoint():
