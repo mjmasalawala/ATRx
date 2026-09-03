@@ -130,6 +130,7 @@ def build_symbol_breakdown(symbol: str, candles: pd.DataFrame) -> dict:
         stats = backtest_level(candles, lvl, current_atr)
         level_rows.append({
             "level": round(lvl.price, 2),
+            "atr": round(current_atr, 2),
             "atrx": round(atrx, 2),
             "touches": lvl.touches,
             "breaches": lvl.breaches,
@@ -154,6 +155,7 @@ def build_symbol_breakdown(symbol: str, candles: pd.DataFrame) -> dict:
         "symbol": symbol,
         "status": "screened",
         "current_price": round(current_price, 2),
+        "atr": round(current_atr, 2),
         "atr_pct": round((current_atr / current_price) * 100, 2),
         "levels": level_rows,
     }

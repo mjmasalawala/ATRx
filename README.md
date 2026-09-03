@@ -263,6 +263,19 @@ touches = 3, breaches = 1**.
 
 ### 3.5 Keep levels price is currently near (the ATRx filter)
 
+**ATRx is how many ATRs away price currently is from a level** —
+`ATRx = (current_price − level) / current_ATR`. It normalizes the raw
+price gap by the stock's own volatility, so "closeness to a level" is
+comparable across stocks with wildly different prices and volatility,
+instead of using a fixed rupee or percentage band. ATRx = 0 means price
+is sitting exactly on the level; ATRx = 1 means price is one full ATR
+above it; ATRx = −1 means one full ATR below. A ₹5 gap means something
+different for a ₹50 stock than a ₹5000 one, and even for the same stock
+it means something different in a calm month vs. a volatile one — ATRx
+measures distance in "how far this stock typically moves in a day" units
+instead of rupees, so the same `atrx_lower`/`atrx_upper` range applies
+sensibly to every stock in the universe.
+
 With current price 101.50 and ATR7 1.50:
 ```
 ATRx = (current_price − level) / ATR7 = (101.50 − 100.20) / 1.50 = 0.867

@@ -297,6 +297,7 @@ const BREAKDOWN_COLUMNS = [
 
 const LEVEL_COLUMNS = [
   { key: "level", label: "Level" },
+  { key: "atr", label: "ATR" },
   { key: "atrx", label: "ATRx" },
   { key: "touches", label: "Touches" },
   { key: "breaches", label: "Breach" },
@@ -449,7 +450,7 @@ function levelDetailHtml(symbol, levels) {
       if (c.key === "score") {
         return `<td class="num">${lvl.score != null ? fmt(lvl.score, 3) : "–"}</td>`;
       }
-      const decimals = c.key === "level" ? 2
+      const decimals = c.key === "level" || c.key === "atr" ? 2
         : (c.key.includes("pct") || c.key === "atrx" || c.key === "recency_weight") ? 2 : 0;
       const suffix = c.key.includes("hit_rate") || c.key.includes("avg_fwd_ret") ? (lvl[c.key] != null ? "%" : "") : "";
       return `<td class="num">${fmt(lvl[c.key], decimals)}${suffix}</td>`;
