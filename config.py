@@ -95,5 +95,20 @@ class Config:
         except (json.JSONDecodeError, ValueError) as e:
             raise ValueError(f"universe.json is invalid: {e}")
 
+    def to_tunable_dict(self) -> dict:
+        return {f: getattr(self, f) for f in TUNABLE_FIELDS}
+
+
+# Screening parameters the web UI lets the user review/tweak before a run.
+# Deliberately excludes broker/auth/path fields -- those aren't screening
+# knobs and shouldn't be user-editable from the browser.
+TUNABLE_FIELDS = (
+    "atr_period", "pivot_window", "lookback_days", "cluster_atr_multiple",
+    "breach_buffer_atr", "min_touches", "max_breaches", "recency_decay_days",
+    "atrx_lower", "atrx_upper", "touch_band_atr", "forward_days_short",
+    "forward_days_long", "min_atr_percentile", "score_w_return",
+    "score_w_proximity", "score_w_recency", "score_breach_penalty", "top_n",
+)
+
 
 CONFIG = Config()

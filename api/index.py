@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, Response, jsonify, redirect, request
 
 from blob_store import upload_csv
+from config import CONFIG
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
 from screener import run_screener
 from token_store import load_access_token, save_access_token
@@ -74,6 +75,10 @@ def status_endpoint():
     return jsonify({"logged_in": bool(token)})
 
 
+def config_endpoint():
+    return jsonify(CONFIG.to_tunable_dict())
+
+
 def run_screener_endpoint():
     try:
         token = load_access_token()
@@ -83,9 +88,11 @@ def run_screener_endpoint():
     if not token:
         return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
 
+    overrides = (request.get_json(silent=True) or {}).get("overrides") or None
+
     try:
         kite = get_kite_session_from_token(token)
-        result = run_screener(kite)
+        result = run_screener(kite, overrides=overrides)
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:
@@ -126,6 +133,7 @@ _ROUTES = {
     "login": login,
     "callback": callback,
     "status": status_endpoint,
+    "config": config_endpoint,
     "run-screener": run_screener_endpoint,
 }
 

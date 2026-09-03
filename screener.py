@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 from kiteconnect import KiteConnect, exceptions as kite_exceptions
 
-from config import CONFIG
+from config import CONFIG, TUNABLE_FIELDS
 from kite_auth import get_kite_session
 from indicators import average_true_range_series
 from levels import build_levels
@@ -79,8 +79,16 @@ def fetch_history(kite: KiteConnect, token: int, calendar_days: int) -> pd.DataF
     return df[["timestamp", "open", "high", "low", "close", "volume"]]
 
 
-def analyze_symbol(symbol: str, candles: pd.DataFrame):
-    """Returns (atr_pct, candidate_rows) or (None, []) if not enough data."""
+def analyze_symbol(symbol: str, candles: pd.DataFrame, only_near: bool = True):
+    """
+    Returns (atr_pct, rows) or (None, []) if not enough data.
+
+    By default (only_near=True) rows cover only levels price is currently
+    near (the ATRx filter) -- these are the screener's actual candidates.
+    With only_near=False, every validated level is returned regardless of
+    current proximity, each tagged `in_range`, so a symbol's full picture
+    of support levels can be inspected, not just the one that qualified.
+    """
     atr_series = average_true_range_series(candles, CONFIG.atr_period)
     candles = candles.assign(atr=atr_series).dropna(subset=["atr"]).reset_index(drop=True)
     if candles.empty:
@@ -97,7 +105,8 @@ def analyze_symbol(symbol: str, candles: pd.DataFrame):
     rows = []
     for lvl in levels:
         atrx = (current_price - lvl.price) / current_atr
-        if not (CONFIG.atrx_lower <= atrx <= CONFIG.atrx_upper):
+        in_range = CONFIG.atrx_lower <= atrx <= CONFIG.atrx_upper
+        if only_near and not in_range:
             continue
 
         stats = backtest_level(candles, lvl, current_atr)
@@ -110,6 +119,7 @@ def analyze_symbol(symbol: str, candles: pd.DataFrame):
             "touches": lvl.touches,
             "breaches": lvl.breaches,
             "recency_weight": round(lvl.recency_weight, 2),
+            "in_range": in_range,
             "backtest_touches": stats.n_touches,
             "hit_rate_3d_pct": None if stats.hit_rate_short is None else round(stats.hit_rate_short, 1),
             "avg_fwd_ret_3d_pct": None if stats.avg_fwd_ret_short is None else round(stats.avg_fwd_ret_short, 2),
@@ -117,6 +127,7 @@ def analyze_symbol(symbol: str, candles: pd.DataFrame):
             "avg_fwd_ret_5d_pct": None if stats.avg_fwd_ret_long is None else round(stats.avg_fwd_ret_long, 2),
         })
 
+    rows.sort(key=lambda r: abs(r["atrx"]))
     return atr_pct, rows
 
 
@@ -148,12 +159,33 @@ def score_candidates(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["score"], reverse=True)
 
 
-def run_screener(kite: KiteConnect) -> dict:
+def run_screener(kite: KiteConnect, overrides: dict | None = None) -> dict:
     """
     Runs the full scan against an already-authenticated KiteConnect session
     and returns the results as data (no file I/O, no sys.exit) so it can be
     reused from both the CLI entrypoint and the web API handler.
+
+    `overrides` temporarily replaces CONFIG.TUNABLE_FIELDS values for the
+    duration of this call (restored in `finally`) -- lets the web UI's
+    config-confirmation step run with user-adjusted parameters without a
+    separate per-request Config instance threaded through every function.
     """
+    original_config_values = {}
+    if overrides:
+        for key, value in overrides.items():
+            if key not in TUNABLE_FIELDS:
+                raise ValueError(f"Unknown config parameter: {key}")
+            original_config_values[key] = getattr(CONFIG, key)
+            setattr(CONFIG, key, value)
+
+    try:
+        return _run_screener(kite)
+    finally:
+        for key, value in original_config_values.items():
+            setattr(CONFIG, key, value)
+
+
+def _run_screener(kite: KiteConnect) -> dict:
     symbols = CONFIG.load_universe()
 
     tokens = resolve_tokens(kite, symbols)
@@ -202,6 +234,15 @@ def run_screener(kite: KiteConnect) -> dict:
 
     ranked_all = score_candidates(all_rows)
 
+    # For every symbol that made the cut, also compute EVERY validated
+    # level (not just the one(s) near price) so the UI can show a
+    # drill-down of the full support-level picture behind a result, not
+    # just the level that happened to qualify.
+    levels_detail = {}
+    for sym in {r["symbol"] for r in ranked_all}:
+        _, all_levels = analyze_symbol(sym, history[sym], only_near=False)
+        levels_detail[sym] = all_levels
+
     return {
         "generated_at": datetime.now().isoformat(),
         "universe_size": len(symbols),
@@ -209,6 +250,7 @@ def run_screener(kite: KiteConnect) -> dict:
         "candidate_count": len(ranked_all),
         "rows": ranked_all,
         "top_rows": ranked_all[:CONFIG.top_n],
+        "levels_detail": levels_detail,
     }
 
 
