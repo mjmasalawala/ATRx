@@ -106,8 +106,10 @@ _FALLBACK_TIERS = [
 def universe_tiers_endpoint():
     try:
         tiers = db_store.list_universe_tiers()
-    except Exception:
-        tiers = []
+    except Exception as e:
+        # Temporary: report the real DB error instead of silently falling
+        # back, to diagnose why the tiers table isn't being read correctly.
+        return jsonify({"error": f"{type(e).__name__}: {e}", "fallback": _FALLBACK_TIERS}), 500
     return jsonify(tiers or _FALLBACK_TIERS)
 
 
