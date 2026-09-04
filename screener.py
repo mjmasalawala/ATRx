@@ -248,12 +248,25 @@ def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap") -> dict:
     buffer_days = CONFIG.pivot_window + CONFIG.atr_period + CONFIG.forward_days_long
     calendar_days = int((CONFIG.lookback_days + buffer_days) * 1.3)  # trading days -> calendar days
 
+    # Rate-limit to Kite's 3 req/sec by spacing request *start* times 1/3s
+    # apart, rather than sleeping a flat 1/3s after every call regardless of
+    # how long the call itself took -- on Vercel's Hobby plan (60s hard cap
+    # on the whole request), that flat-sleep version was routinely pushing
+    # bigger universes (small_cap) over the timeout: a ~150-250ms Kite call
+    # plus an unconditional 333ms sleep meant each symbol cost ~500-600ms
+    # even though 333ms of that includes the call's own network time.
     history: dict[str, pd.DataFrame] = {}
+    min_interval = 1.0 / 3.0
+    next_request_at = time_module.monotonic()
     for sym, token in tokens.items():
+        wait = next_request_at - time_module.monotonic()
+        if wait > 0:
+            time_module.sleep(wait)
+        next_request_at = time_module.monotonic() + min_interval
+
         df = fetch_history(kite, token, calendar_days)
         if df is not None:
             history[sym] = df
-        time_module.sleep(1.0 / 3.0)  # respect Kite's 3 req/sec historical limit
 
     if not history:
         raise RuntimeError("Could not fetch history for any symbol.")
