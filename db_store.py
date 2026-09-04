@@ -136,12 +136,26 @@ def upsert_trades(rows: list[dict]) -> int:
         return written
 
 
+
+# Trades sharing an exact trade_time (common when a CSV row only has a bare
+# trade_date, no order_execution_time, so several same-day fills all land
+# on the same midnight timestamp) need a deterministic tiebreak -- without
+# one, Postgres returns ties in an arbitrary order, and a same-day SELL
+# landing before its matching BUY makes cost_basis.replay() see an oversell
+# against zero held shares. Processing BUYs before SELLs within a tie
+# doesn't change same-day P&L under the average-cost method (unlike FIFO,
+# order within a day doesn't matter for the blended average), so it's a
+# safe way to break the tie; trade_id is the final tiebreak for same-side
+# same-timestamp ties (e.g. a single order filled in several tranches).
+_TRADE_ORDER_BY = "trade_time ASC, (side = 'SELL') ASC, trade_id ASC"
+
+
 def load_symbol_trades(symbol: str) -> list[dict]:
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT trade_id, side, quantity, price, trade_time, order_id
-            FROM {COST_BASIS_TRADES_TABLE} WHERE symbol = %s ORDER BY trade_time ASC
+            FROM {COST_BASIS_TRADES_TABLE} WHERE symbol = %s ORDER BY {_TRADE_ORDER_BY}
             """,
             [symbol],
         )
@@ -161,7 +175,7 @@ def load_all_trades() -> dict[str, list[dict]]:
         cur.execute(
             f"""
             SELECT symbol, trade_id, side, quantity, price, trade_time, order_id
-            FROM {COST_BASIS_TRADES_TABLE} ORDER BY symbol, trade_time ASC
+            FROM {COST_BASIS_TRADES_TABLE} ORDER BY symbol, {_TRADE_ORDER_BY}
             """
         )
         by_symbol: dict[str, list[dict]] = {}

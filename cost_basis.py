@@ -58,12 +58,26 @@ class CostBasisState:
         return self.quantity > 0 and self.total_cost <= 0
 
 
+_QTY_EPSILON = 1e-6  # float-rounding tolerance for "effectively zero"
+
+
 def replay(symbol: str, trades: list[dict]) -> dict:
     """Replays trades (chronological) into a trade-by-trade ledger and the
-    resulting final state. A lot that's fully exited (quantity hits zero)
-    resets to a fresh cost basis on the next buy -- lifetime_realized keeps
-    accumulating across lots, but cumulative_realized (what backs the
-    current "FREE" check) does not."""
+    resulting final state. A lot that's fully exited (quantity settles at
+    ~zero) resets to a fresh cost basis on the next buy -- lifetime_realized
+    keeps accumulating across lots, but cumulative_realized (what backs the
+    current "FREE" check) does not.
+
+    Raises ValueError if a sell would ever take quantity meaningfully
+    negative. This is deliberately NOT treated as "open a short position" --
+    this module's whole cost-basis-reduction model (and "FREE" concept) is
+    built around long holdings only, so a short here means either genuinely
+    shorted activity that this calculation doesn't yet know how to
+    represent, or a sell landing before its matching buy due to incomplete/
+    out-of-order trade history. Either way, silently clamping to zero
+    (an earlier version did this) produces a wrong-but-plausible-looking
+    leftover quantity -- surfacing it as a failure is safer until short
+    positions are explicitly designed for."""
     state = CostBasisState(symbol=symbol)
     ledger: list[LedgerEntry] = []
 
@@ -86,8 +100,16 @@ def replay(symbol: str, trades: list[dict]) -> dict:
         else:
             raise ValueError(f"Unknown trade side: {side!r}")
 
-        if state.quantity <= 0:
-            state.quantity = max(state.quantity, 0.0)
+        if state.quantity < -_QTY_EPSILON:
+            raise ValueError(
+                f"{symbol}: sell (trade_id={trade.get('trade_id')}, {trade.get('trade_time')}) "
+                f"leaves quantity at {state.quantity:.4f} -- negative. Either this symbol has short "
+                f"activity (not yet supported by this long-only cost-basis model) or its trade "
+                f"history is incomplete/out of order (a sell landing before its matching buy)."
+            )
+
+        if state.quantity <= _QTY_EPSILON:
+            state.quantity = 0.0
             state.total_cost = 0.0
             state.cumulative_realized = 0.0
 
