@@ -53,7 +53,7 @@ def _build_column_map(fieldnames: list[str]) -> dict[str, str]:
     return column_map
 
 
-_REQUIRED_COLUMNS = ("symbol", "side", "quantity", "price", "trade_id")
+_REQUIRED_COLUMNS = ("symbol", "side", "quantity", "price", "trade_id", "exchange")
 
 
 def parse_trades_csv(file_content: str) -> list[dict]:
@@ -91,10 +91,14 @@ def parse_trades_csv(file_content: str) -> list[dict]:
             if not trade_time:
                 raise ValueError("no trade_time or trade_date value")
 
+            exchange = raw[column_map["exchange"]].strip()
+            if not exchange:
+                raise ValueError("empty exchange value")
+
             rows.append({
                 "trade_id": raw[column_map["trade_id"]].strip(),
                 "symbol": raw[column_map["symbol"]].strip().upper(),
-                "exchange": raw[column_map["exchange"]].strip() if "exchange" in column_map else None,
+                "exchange": exchange,
                 "side": side,
                 "quantity": float(raw[column_map["quantity"]]),
                 "price": float(raw[column_map["price"]]),

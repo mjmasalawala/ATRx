@@ -110,10 +110,14 @@ def list_instruments_by_index() -> dict[str, list[str]]:
 
 
 def upsert_trades(rows: list[dict]) -> int:
-    """Inserts fills pulled from Kite's trade book. trade_id is the primary
-    key, so re-running the daily sync (or the manual 'Sync now' button)
-    can't double-insert the same fill -- ON CONFLICT DO NOTHING makes this
-    idempotent."""
+    """Inserts fills from an uploaded tradebook CSV. Primary key is
+    (trade_id, exchange), NOT trade_id alone -- Zerodha's trade IDs are
+    only unique WITHIN an exchange, so a symbol traded on both NSE and BSE
+    can have genuinely different trades sharing the same trade_id. Keying
+    on trade_id alone (an earlier version did) let a real trade on one
+    exchange silently vanish via ON CONFLICT DO NOTHING because its ID
+    collided with an unrelated trade already stored from the other
+    exchange -- see scripts/009_fix_trades_composite_key.sql."""
     if not rows:
         return 0
     with get_conn() as conn, conn.cursor() as cur:
@@ -124,10 +128,10 @@ def upsert_trades(rows: list[dict]) -> int:
                 INSERT INTO {COST_BASIS_TRADES_TABLE}
                     (trade_id, symbol, exchange, side, quantity, price, trade_time, order_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (trade_id) DO NOTHING
+                ON CONFLICT (trade_id, exchange) DO NOTHING
                 """,
                 [
-                    row["trade_id"], row["symbol"], row.get("exchange"), row["side"],
+                    row["trade_id"], row["symbol"], row["exchange"], row["side"],
                     row["quantity"], row["price"], row["trade_time"], row.get("order_id"),
                 ],
             )
