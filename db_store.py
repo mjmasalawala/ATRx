@@ -30,6 +30,9 @@ COST_BASIS_BASELINE_TABLE = "cost_basis_baseline"
 COST_BASIS_TRADES_TABLE = "cost_basis_trades"
 COST_BASIS_STATE_TABLE = "cost_basis_state"
 
+NSE_HOLIDAYS_TABLE = "nse_holidays"
+SCREENER_ALERTS_SENT_TABLE = "screener_alerts_sent"
+
 
 def _connection_string() -> str:
     for name in _ENV_VAR_CANDIDATES:
@@ -229,3 +232,59 @@ def list_cost_basis_summary() -> list[dict]:
             }
             for r in cur.fetchall()
         ]
+
+
+def replace_nse_holidays(year: int, rows: list[dict]) -> int:
+    """Replaces every stored holiday in `year` with `rows` ([{date, description}]).
+    Wipe-and-reinsert rather than upsert, since NSE occasionally revises its
+    published list (e.g. added muhurat trading days) and a stale removed
+    entry should disappear, not linger."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"DELETE FROM {NSE_HOLIDAYS_TABLE} WHERE EXTRACT(YEAR FROM holiday_date) = %s",
+            [year],
+        )
+        for row in rows:
+            cur.execute(
+                f"INSERT INTO {NSE_HOLIDAYS_TABLE} (holiday_date, description) "
+                f"VALUES (%s, %s) ON CONFLICT (holiday_date) DO UPDATE SET description = EXCLUDED.description",
+                [row["date"], row.get("description", "")],
+            )
+        conn.commit()
+        return len(rows)
+
+
+def is_nse_holiday(date) -> bool:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT 1 FROM {NSE_HOLIDAYS_TABLE} WHERE holiday_date = %s", [date])
+        return cur.fetchone() is not None
+
+
+def filter_unsent_candidates(alert_date, candidates: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    """Given [(symbol, level), ...], returns only the ones not already
+    recorded as sent on `alert_date`."""
+    if not candidates:
+        return []
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT symbol, level FROM {SCREENER_ALERTS_SENT_TABLE} WHERE alert_date = %s",
+            [alert_date],
+        )
+        already_sent = {(r[0], float(r[1])) for r in cur.fetchall()}
+    return [c for c in candidates if (c[0], float(c[1])) not in already_sent]
+
+
+def record_alerts_sent(alert_date, candidates: list[tuple[str, float]]) -> None:
+    if not candidates:
+        return
+    with get_conn() as conn, conn.cursor() as cur:
+        for symbol, level in candidates:
+            cur.execute(
+                f"""
+                INSERT INTO {SCREENER_ALERTS_SENT_TABLE} (alert_date, symbol, level)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (alert_date, symbol, level) DO NOTHING
+                """,
+                [alert_date, symbol, level],
+            )
+        conn.commit()

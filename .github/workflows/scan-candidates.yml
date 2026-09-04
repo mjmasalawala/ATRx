@@ -1,0 +1,39 @@
+name: Scan candidates and WhatsApp alert
+
+# Vercel Hobby cron can only fire once a day, so this every-15-min trigger
+# lives here instead. The cron below is intentionally a little wider than
+# the actual 8:50am-3:00pm IST window (3:20-9:30 UTC) -- GitHub Actions
+# schedules aren't guaranteed to fire exactly on time anyway, and
+# candidate_alert.run_candidate_scan() is the real, authoritative window +
+# NSE-holiday check; a firing outside the window is a harmless no-op.
+on:
+  schedule:
+    - cron: "*/15 3-9 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discover universe tiers and scan each
+        env:
+          ATRX_BASE_URL: ${{ secrets.ATRX_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          tiers=$(curl -sf "$ATRX_BASE_URL/api/universe-tiers" | jq -r '.[].tier')
+
+          if [ -z "$tiers" ]; then
+            echo "No universe tiers returned; nothing to scan."
+            exit 0
+          fi
+
+          for tier in $tiers; do
+            echo "Scanning tier: $tier"
+            curl -sf -X POST \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$ATRX_BASE_URL/api/scan-candidates?tier=$tier" \
+              || echo "Scan failed for tier $tier (continuing)"
+            echo
+          done
