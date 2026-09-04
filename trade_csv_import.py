@@ -22,7 +22,7 @@ import csv
 import io
 from datetime import datetime, timezone
 
-import cost_basis
+import cost_basis_state_sync
 import db_store
 
 _COLUMN_ALIASES = {
@@ -111,18 +111,7 @@ def import_trades_csv(file_content: str) -> dict:
     rows, skipped = parse_trades_csv(file_content)
 
     inserted = db_store.upsert_trades(rows)
-
-    symbols = sorted({row["symbol"] for row in rows})
-    state_rows = []
-    for symbol in symbols:
-        baseline = db_store.load_baseline_row(symbol)
-        trades = db_store.load_symbol_trades(symbol)
-        result = cost_basis.replay(symbol, baseline, trades)
-        state_rows.append({k: result[k] for k in (
-            "symbol", "quantity", "total_cost", "avg_cost",
-            "cumulative_realized", "lifetime_realized", "is_free",
-        )})
-    db_store.upsert_cost_basis_state(state_rows)
+    cost_basis_state_sync.recompute_all()
 
     now = datetime.now(timezone.utc)
     db_store.set_last_trades_sync(now)
@@ -130,7 +119,7 @@ def import_trades_csv(file_content: str) -> dict:
     return {
         "parsed": len(rows) + len(skipped),
         "inserted": inserted,
-        "symbols_updated": symbols,
+        "symbols_updated": sorted({row["symbol"] for row in rows}),
         "skipped_rows": skipped,
         "synced_at": now.isoformat(),
     }

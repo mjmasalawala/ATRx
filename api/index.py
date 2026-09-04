@@ -22,7 +22,6 @@ from flask import Flask, Response, jsonify, redirect, request
 
 import candidate_alert
 import db_store
-import kite_sync
 import nse_holidays_sync
 import trade_csv_import
 from blob_store import upload_csv
@@ -256,24 +255,6 @@ def cost_basis_sync_status_endpoint():
     return jsonify({"last_synced_at": last_synced_at})
 
 
-def download_holdings_baseline_endpoint():
-    try:
-        token = load_access_token()
-    except RuntimeError as e:
-        return jsonify({"error": f"Token store not configured: {e}"}), 500
-    if not token:
-        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
-    try:
-        result = kite_sync.download_holdings_baseline()
-    except Exception as e:
-        import traceback
-        return jsonify({
-            "error": f"Unexpected {type(e).__name__}: {e}",
-            "traceback": traceback.format_exc(),
-        }), 500
-    return jsonify(result)
-
-
 def scan_candidates_endpoint():
     provided = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
     if not CRON_SECRET or provided != CRON_SECRET:
@@ -322,7 +303,6 @@ _ROUTES = {
     "cost-basis-ledger": cost_basis_ledger_endpoint,
     "cost-basis-upload-trades": cost_basis_upload_trades_endpoint,
     "cost-basis-sync-status": cost_basis_sync_status_endpoint,
-    "download-holdings-baseline": download_holdings_baseline_endpoint,
     "scan-candidates": scan_candidates_endpoint,
     "sync-nse-holidays": sync_nse_holidays_endpoint,
 }

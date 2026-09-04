@@ -1,9 +1,11 @@
 """
 One-off local script: dumps your current Kite holdings and seeds them into
-cost_basis_baseline as the starting lot for each symbol, before the daily
-sync (kite_sync.py) starts appending trades on top.
+cost_basis_baseline as the starting lot for each symbol. Trade history on
+top of that baseline comes from uploading a tradebook CSV on the Cost
+Basis page (see trade_csv_import.py), not from this script or any live
+Kite API sync.
 
-Run manually, once:
+Run manually, whenever you need to seed a new symbol's starting position:
     python scripts/seed_cost_basis_baseline.py
     python scripts/seed_cost_basis_baseline.py --force   # overwrite existing baseline rows
 
@@ -18,6 +20,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import cost_basis_state_sync
 import db_store
 from kite_auth import get_kite_session
 
@@ -49,6 +52,9 @@ def main():
     print(f"Seeded {written} baseline row(s) out of {len(rows)} holding(s) fetched.")
     if written < len(rows) and not args.force:
         print("Some symbols already had a baseline row and were left alone -- re-run with --force to overwrite.")
+
+    updated_symbols = cost_basis_state_sync.recompute_all()
+    print(f"Recomputed cost_basis_state for {len(updated_symbols)} symbol(s) -- they'll now show on the Cost Basis page.")
 
 
 if __name__ == "__main__":
