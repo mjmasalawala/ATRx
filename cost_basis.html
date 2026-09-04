@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cost Basis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10131A;
+    --surface: #171B24;
+    --surface-alt: #1D2230;
+    --border: #262B38;
+    --text: #F7F8FA;
+    --text-dim: #B7BECE;
+    --accent: #E0A857;
+    --green: #6FCF97;
+    --red: #EB5757;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    flex: none;
+    width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sidebar-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); padding: 0 20px 18px;
+  }
+  .nav-link {
+    display: block; padding: 10px 20px; font-size: 13px; font-weight: 500;
+    color: var(--text-dim); text-decoration: none; border-left: 3px solid transparent;
+  }
+  .nav-link:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .main-content { flex: 1; min-width: 0; }
+
+  header { padding: 28px 32px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .sync-btn {
+    background: var(--surface-alt); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer;
+  }
+  .sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .sync-btn:disabled { opacity: 0.5; cursor: default; }
+  .sync-status { font-size: 12px; color: var(--text-dim); margin-top: 8px; text-align: right; }
+
+  .content { padding: 24px 32px; }
+  .filter-input {
+    width: 100%; max-width: 320px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 9px 12px; color: var(--text); font-family: inherit; font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .filter-input:focus { outline: none; border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: right; font-weight: 600; color: var(--text-dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 12px; border-bottom: 1px solid var(--border);
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }
+  tbody tr.symbol-row { cursor: pointer; }
+  tbody tr.symbol-row:hover { background: var(--surface-alt); }
+  .symbol-cell { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
+  .free-badge {
+    display: inline-block; background: rgba(111,207,151,0.15); color: var(--green);
+    border: 1px solid var(--green); border-radius: 4px; padding: 1px 7px; font-size: 11px;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; margin-left: 8px;
+  }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  .ledger-row td { background: var(--surface); padding: 0; }
+  .ledger-wrap { padding: 14px 12px 18px; }
+  .ledger-wrap table { font-size: 12px; }
+  .ledger-wrap th, .ledger-wrap td { padding: 6px 10px; }
+  .side-buy { color: var(--green); }
+  .side-sell { color: var(--red); }
+
+  .empty-state { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-title">ATRx</div>
+  <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/cost-basis" class="nav-link active">Cost Basis</a>
+</nav>
+
+<div class="main-content">
+
+<header>
+  <h1>Cost Basis</h1>
+  <div>
+    <button class="sync-btn" id="sync-btn">Sync now</button>
+  </div>
+</header>
+
+<div class="content">
+  <div id="sync-status" class="sync-status" style="display:none"></div>
+  <input class="filter-input" id="filter-input" type="text" placeholder="Filter by ticker...">
+  <div id="table-wrap">
+    <div class="empty-state">Loading...</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const tableWrap = document.getElementById('table-wrap');
+const filterInput = document.getElementById('filter-input');
+const syncBtn = document.getElementById('sync-btn');
+const syncStatus = document.getElementById('sync-status');
+
+let rows = [];
+let expanded = null;
+const ledgerCache = {};
+
+function fmtNum(n, digits = 2) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function pnlClass(n) {
+  if (n === null || n === undefined) return '';
+  return n > 0 ? 'positive' : n < 0 ? 'negative' : '';
+}
+
+async function loadSummary() {
+  try {
+    const res = await fetch('/api/cost-basis-summary');
+    rows = await res.json();
+    if (!Array.isArray(rows)) throw new Error(rows.error || 'Unexpected response');
+    render();
+  } catch (e) {
+    tableWrap.innerHTML = `<div class="empty-state">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function render() {
+  const query = filterInput.value.trim().toUpperCase();
+  const filtered = rows.filter(r => r.symbol.toUpperCase().includes(query));
+
+  if (!rows.length) {
+    tableWrap.innerHTML = '<div class="empty-state">No trades synced yet. Seed a baseline and run a sync.</div>';
+    return;
+  }
+  if (!filtered.length) {
+    tableWrap.innerHTML = '<div class="empty-state">No tickers match that filter.</div>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Ticker</th>
+        <th>Qty</th>
+        <th>Avg cost / share</th>
+        <th>Total cost</th>
+        <th>Realized (current lot)</th>
+        <th>Lifetime realized</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+
+  for (const r of filtered) {
+    const tr = document.createElement('tr');
+    tr.className = 'symbol-row';
+    tr.dataset.symbol = r.symbol;
+    tr.innerHTML = `
+      <td class="symbol-cell">${r.symbol}${r.is_free ? '<span class="free-badge">FREE</span>' : ''}</td>
+      <td>${fmtNum(r.quantity, 0)}</td>
+      <td>${fmtNum(r.avg_cost)}</td>
+      <td>${fmtNum(r.total_cost)}</td>
+      <td class="${pnlClass(r.cumulative_realized)}">${fmtNum(r.cumulative_realized)}</td>
+      <td class="${pnlClass(r.lifetime_realized)}">${fmtNum(r.lifetime_realized)}</td>
+    `;
+    tr.addEventListener('click', () => toggleLedger(r.symbol));
+    tbody.appendChild(tr);
+
+    if (expanded === r.symbol) {
+      const ledgerTr = document.createElement('tr');
+      ledgerTr.className = 'ledger-row';
+      const td = document.createElement('td');
+      td.colSpan = 6;
+      td.appendChild(renderLedger(r.symbol));
+      ledgerTr.appendChild(td);
+      tbody.appendChild(ledgerTr);
+    }
+  }
+
+  tableWrap.innerHTML = '';
+  tableWrap.appendChild(table);
+}
+
+function renderLedger(symbol) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ledger-wrap';
+  const ledger = ledgerCache[symbol];
+  if (!ledger) {
+    wrap.textContent = 'Loading...';
+    return wrap;
+  }
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Side</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Realized</th>
+        <th>Qty after</th>
+        <th>Avg cost after</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${ledger.ledger.map(e => `
+        <tr>
+          <td style="text-align:left">${(e.trade_time || '').replace('T', ' ').slice(0, 16)}</td>
+          <td class="${e.side === 'BUY' ? 'side-buy' : e.side === 'SELL' ? 'side-sell' : ''}" style="text-align:left">${e.side}</td>
+          <td>${fmtNum(e.quantity, 0)}</td>
+          <td>${fmtNum(e.price)}</td>
+          <td class="${pnlClass(e.realized)}">${fmtNum(e.realized)}</td>
+          <td>${fmtNum(e.quantity_after, 0)}</td>
+          <td>${fmtNum(e.avg_cost_after)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
+  wrap.appendChild(table);
+  return wrap;
+}
+
+async function toggleLedger(symbol) {
+  expanded = expanded === symbol ? null : symbol;
+  render();
+  if (expanded && !ledgerCache[expanded]) {
+    try {
+      const res = await fetch(`/api/cost-basis-ledger?symbol=${encodeURIComponent(expanded)}`);
+      ledgerCache[expanded] = await res.json();
+    } catch (e) {
+      ledgerCache[expanded] = { ledger: [] };
+    }
+    render();
+  }
+}
+
+filterInput.addEventListener('input', render);
+
+syncBtn.addEventListener('click', async () => {
+  syncBtn.disabled = true;
+  syncStatus.style.display = 'block';
+  syncStatus.textContent = 'Syncing...';
+  try {
+    const res = await fetch('/api/sync-trades-now', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      syncStatus.textContent = data.error || 'Sync failed.';
+    } else if (data.reason) {
+      syncStatus.textContent = data.reason === 'not logged in'
+        ? 'Not logged in -- log in via the Screener page first.'
+        : data.reason;
+    } else {
+      syncStatus.textContent = `Synced ${data.synced} trade(s) across ${(data.symbols_updated || []).length} ticker(s).`;
+      await loadSummary();
+    }
+  } catch (e) {
+    syncStatus.textContent = `Sync failed: ${e.message}`;
+  } finally {
+    syncBtn.disabled = false;
+  }
+});
+
+loadSummary();
+</script>
+</body>
+</html>

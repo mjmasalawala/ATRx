@@ -21,8 +21,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask, Response, jsonify, redirect, request
 
 import db_store
+import kite_sync
 from blob_store import upload_csv
 from config import CONFIG
+from cost_basis import replay as replay_cost_basis
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
 from screener import run_screener
 from token_store import load_access_token, save_access_token
@@ -30,7 +32,9 @@ from token_store import load_access_token, save_access_token
 app = Flask(__name__)
 
 _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
-_STRATEGY2_HTML_PATH = Path(__file__).resolve().parent.parent / "strategy2.html"
+_COST_BASIS_HTML_PATH = Path(__file__).resolve().parent.parent / "cost_basis.html"
+
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 
 def _serve_html(path: Path, missing_message: str):
@@ -45,8 +49,8 @@ def home():
     return _serve_html(_INDEX_HTML_PATH, "index.html not found")
 
 
-def strategy2():
-    return _serve_html(_STRATEGY2_HTML_PATH, "strategy2.html not found")
+def cost_basis_page():
+    return _serve_html(_COST_BASIS_HTML_PATH, "cost_basis.html not found")
 
 
 def login():
@@ -162,15 +166,64 @@ def _store_csv_snapshot(rows: list[dict]):
         return None, f"{type(e).__name__}: {e}"
 
 
+def cost_basis_summary_endpoint():
+    try:
+        rows = db_store.list_cost_basis_summary()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(rows)
+
+
+def cost_basis_ledger_endpoint():
+    symbol = (request.args.get("symbol") or "").strip().upper()
+    if not symbol:
+        return jsonify({"error": "symbol query param is required"}), 400
+    try:
+        baseline = db_store.load_baseline_row(symbol)
+        trades = db_store.load_symbol_trades(symbol)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(replay_cost_basis(symbol, baseline, trades))
+
+
+def sync_trades_endpoint():
+    provided = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not CRON_SECRET or provided != CRON_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        result = kite_sync.sync_todays_trades()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(result)
+
+
+def sync_trades_now_endpoint():
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return jsonify({"error": f"Token store not configured: {e}"}), 500
+    if not token:
+        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
+    try:
+        result = kite_sync.sync_todays_trades()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(result)
+
+
 _ROUTES = {
     "": home,
-    "strategy2": strategy2,
+    "cost-basis": cost_basis_page,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
     "config": config_endpoint,
     "universe-tiers": universe_tiers_endpoint,
     "run-screener": run_screener_endpoint,
+    "cost-basis-summary": cost_basis_summary_endpoint,
+    "cost-basis-ledger": cost_basis_ledger_endpoint,
+    "sync-trades": sync_trades_endpoint,
+    "sync-trades-now": sync_trades_now_endpoint,
 }
 
 

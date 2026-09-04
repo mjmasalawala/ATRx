@@ -6,12 +6,19 @@
   },
   "rewrites": [
     { "source": "/", "destination": "/api/index?r=" },
-    { "source": "/strategy2", "destination": "/api/index?r=strategy2" },
+    { "source": "/cost-basis", "destination": "/api/index?r=cost-basis" },
     { "source": "/api/login", "destination": "/api/index?r=login" },
     { "source": "/api/callback", "destination": "/api/index?r=callback" },
     { "source": "/api/status", "destination": "/api/index?r=status" },
     { "source": "/api/config", "destination": "/api/index?r=config" },
     { "source": "/api/universe-tiers", "destination": "/api/index?r=universe-tiers" },
-    { "source": "/api/run-screener", "destination": "/api/index?r=run-screener" }
+    { "source": "/api/run-screener", "destination": "/api/index?r=run-screener" },
+    { "source": "/api/cost-basis-summary", "destination": "/api/index?r=cost-basis-summary" },
+    { "source": "/api/cost-basis-ledger", "destination": "/api/index?r=cost-basis-ledger" },
+    { "source": "/api/sync-trades", "destination": "/api/index?r=sync-trades" },
+    { "source": "/api/sync-trades-now", "destination": "/api/index?r=sync-trades-now" }
+  ],
+  "crons": [
+    { "path": "/api/sync-trades", "schedule": "30 10 * * *" }
   ]
 }

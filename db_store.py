@@ -26,6 +26,10 @@ CONFIG_TABLE = "screener_config"
 UNIVERSE_TIERS_TABLE = "screener_universes"
 DEFAULT_TIER = "large_cap"
 
+COST_BASIS_BASELINE_TABLE = "cost_basis_baseline"
+COST_BASIS_TRADES_TABLE = "cost_basis_trades"
+COST_BASIS_STATE_TABLE = "cost_basis_state"
+
 
 def _connection_string() -> str:
     for name in _ENV_VAR_CANDIDATES:
@@ -86,3 +90,142 @@ def save_universe(tier: str, symbols: list[str], note: str = "") -> None:
             [tier, note, Json(symbols)],
         )
         conn.commit()
+
+
+def save_baseline(rows: list[dict], force: bool = False) -> int:
+    """Seeds cost_basis_baseline from a one-time Kite holdings dump. Refuses
+    to overwrite a symbol that already has a baseline row unless force=True,
+    since this is meant to be a one-time historical starting point, not
+    something a re-run should silently clobber."""
+    with get_conn() as conn, conn.cursor() as cur:
+        on_conflict = (
+            "DO UPDATE SET quantity = EXCLUDED.quantity, avg_price = EXCLUDED.avg_price, "
+            "as_of_date = EXCLUDED.as_of_date, captured_at = now()"
+            if force else "DO NOTHING"
+        )
+        written = 0
+        for row in rows:
+            cur.execute(
+                f"""
+                INSERT INTO {COST_BASIS_BASELINE_TABLE} (symbol, quantity, avg_price, as_of_date)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (symbol) {on_conflict}
+                """,
+                [row["symbol"], row["quantity"], row["avg_price"], row["as_of_date"]],
+            )
+            written += cur.rowcount
+        conn.commit()
+        return written
+
+
+def load_baseline_row(symbol: str) -> dict | None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT symbol, quantity, avg_price, as_of_date FROM {COST_BASIS_BASELINE_TABLE} WHERE symbol = %s",
+            [symbol],
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"symbol": row[0], "quantity": row[1], "avg_price": row[2], "as_of_date": str(row[3])}
+
+
+def upsert_trades(rows: list[dict]) -> int:
+    """Inserts fills pulled from Kite's trade book. trade_id is the primary
+    key, so re-running the daily sync (or the manual 'Sync now' button)
+    can't double-insert the same fill -- ON CONFLICT DO NOTHING makes this
+    idempotent."""
+    if not rows:
+        return 0
+    with get_conn() as conn, conn.cursor() as cur:
+        written = 0
+        for row in rows:
+            cur.execute(
+                f"""
+                INSERT INTO {COST_BASIS_TRADES_TABLE}
+                    (trade_id, symbol, exchange, side, quantity, price, trade_time, order_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (trade_id) DO NOTHING
+                """,
+                [
+                    row["trade_id"], row["symbol"], row.get("exchange"), row["side"],
+                    row["quantity"], row["price"], row["trade_time"], row.get("order_id"),
+                ],
+            )
+            written += cur.rowcount
+        conn.commit()
+        return written
+
+
+def load_symbol_trades(symbol: str) -> list[dict]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT trade_id, side, quantity, price, trade_time, order_id
+            FROM {COST_BASIS_TRADES_TABLE} WHERE symbol = %s ORDER BY trade_time ASC
+            """,
+            [symbol],
+        )
+        return [
+            {
+                "trade_id": r[0], "side": r[1], "quantity": r[2], "price": r[3],
+                "trade_time": r[4].isoformat(), "order_id": r[5],
+            }
+            for r in cur.fetchall()
+        ]
+
+
+def list_traded_symbols() -> list[str]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT symbol FROM {COST_BASIS_BASELINE_TABLE}
+            UNION
+            SELECT DISTINCT symbol FROM {COST_BASIS_TRADES_TABLE}
+            ORDER BY symbol
+            """
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+def upsert_cost_basis_state(rows: list[dict]) -> None:
+    if not rows:
+        return
+    with get_conn() as conn, conn.cursor() as cur:
+        for row in rows:
+            cur.execute(
+                f"""
+                INSERT INTO {COST_BASIS_STATE_TABLE}
+                    (symbol, quantity, total_cost, avg_cost, cumulative_realized, lifetime_realized, is_free, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (symbol) DO UPDATE SET
+                    quantity = EXCLUDED.quantity, total_cost = EXCLUDED.total_cost,
+                    avg_cost = EXCLUDED.avg_cost, cumulative_realized = EXCLUDED.cumulative_realized,
+                    lifetime_realized = EXCLUDED.lifetime_realized, is_free = EXCLUDED.is_free,
+                    updated_at = now()
+                """,
+                [
+                    row["symbol"], row["quantity"], row["total_cost"], row["avg_cost"],
+                    row["cumulative_realized"], row["lifetime_realized"], row["is_free"],
+                ],
+            )
+        conn.commit()
+
+
+def list_cost_basis_summary() -> list[dict]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT symbol, quantity, total_cost, avg_cost, cumulative_realized,
+                   lifetime_realized, is_free, updated_at
+            FROM {COST_BASIS_STATE_TABLE} ORDER BY symbol
+            """
+        )
+        return [
+            {
+                "symbol": r[0], "quantity": r[1], "total_cost": r[2], "avg_cost": r[3],
+                "cumulative_realized": r[4], "lifetime_realized": r[5], "is_free": r[6],
+                "updated_at": r[7].isoformat(),
+            }
+            for r in cur.fetchall()
+        ]
