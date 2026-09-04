@@ -1,30 +1,25 @@
 """
 Recomputes and stores cost_basis_state (the precomputed table the Cost
-Basis page's summary table actually reads) for every symbol that has a
-baseline row and/or any uploaded trades.
+Basis page's summary table actually reads) for every symbol with any
+uploaded trades. Runs purely off trade history -- see cost_basis.py for
+why baseline snapshots are no longer part of this calculation.
 
-Shared by trade_csv_import.py (after an upload) and
-scripts/seed_cost_basis_baseline.py (after seeding) -- both need the FULL
-symbol universe recomputed, not just the symbols they individually
-touched. Scoping this to only the touched symbols was the bug that left
-baseline-only positions (no trades uploaded for them yet) permanently
-missing from the summary table: a symbol never gets a cost_basis_state
-row until something recomputes state for it specifically, so a partial
-recompute leaves every other symbol's row (if it never existed) or its
-staleness (if it did) unresolved.
+Called by trade_csv_import.py after every upload -- needs the FULL symbol
+universe recomputed each time, not just the symbols touched by that
+particular upload, since a symbol never gets a cost_basis_state row until
+something recomputes state for it specifically.
 
 Per-symbol failures are caught and reported rather than aborting the
-whole recompute -- one symbol with bad/unexpected data (e.g. a sell
-with no matching buy history) must not silently prevent every other
-symbol's state from being written at all.
+whole recompute -- one symbol with bad/unexpected data (e.g. a sell with
+no matching buy history) must not silently prevent every other symbol's
+state from being written at all.
 
-Loads every symbol's baseline and trades with two bulk queries
-(db_store.load_all_baselines/load_all_trades) rather than opening a
-fresh database connection per symbol per table (load_baseline_row/
-load_symbol_trades each open their own connection) -- for a few dozen
-symbols that was 80+ sequential connection handshakes to Neon, slow
-enough to plausibly run into Vercel's 60s function timeout and abort
-before ever writing anything.
+Loads every symbol's trades with one bulk query (db_store.load_all_trades)
+rather than opening a fresh database connection per symbol
+(load_symbol_trades opens its own connection) -- for a few dozen symbols
+that was dozens of sequential connection handshakes to Neon, slow enough
+to plausibly run into Vercel's 60s function timeout and abort before
+ever writing anything.
 """
 
 import logging
@@ -36,15 +31,13 @@ logger = logging.getLogger("atrx.cost_basis_state_sync")
 
 
 def recompute_all() -> dict:
-    baselines = db_store.load_all_baselines()
     trades_by_symbol = db_store.load_all_trades()
-    symbols = sorted(set(baselines) | set(trades_by_symbol))
 
     state_rows = []
     failed = []
-    for symbol in symbols:
+    for symbol in sorted(trades_by_symbol):
         try:
-            result = cost_basis.replay(symbol, baselines.get(symbol), trades_by_symbol.get(symbol, []))
+            result = cost_basis.replay(symbol, trades_by_symbol[symbol])
             state_rows.append({k: result[k] for k in (
                 "symbol", "quantity", "total_cost", "avg_cost",
                 "cumulative_realized", "lifetime_realized", "is_free",

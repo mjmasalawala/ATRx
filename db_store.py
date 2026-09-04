@@ -26,7 +26,6 @@ CONFIG_TABLE = "screener_config"
 UNIVERSE_TIERS_TABLE = "screener_universes"
 DEFAULT_TIER = "large_cap"
 
-COST_BASIS_BASELINE_TABLE = "cost_basis_baseline"
 COST_BASIS_TRADES_TABLE = "cost_basis_trades"
 COST_BASIS_STATE_TABLE = "cost_basis_state"
 COST_BASIS_SYNC_STATE_TABLE = "cost_basis_sync_state"
@@ -110,44 +109,6 @@ def list_instruments_by_index() -> dict[str, list[str]]:
         return by_index
 
 
-def save_baseline(rows: list[dict], force: bool = False) -> int:
-    """Seeds cost_basis_baseline from a one-time Kite holdings dump. Refuses
-    to overwrite a symbol that already has a baseline row unless force=True,
-    since this is meant to be a one-time historical starting point, not
-    something a re-run should silently clobber."""
-    with get_conn() as conn, conn.cursor() as cur:
-        on_conflict = (
-            "DO UPDATE SET quantity = EXCLUDED.quantity, avg_price = EXCLUDED.avg_price, "
-            "as_of_date = EXCLUDED.as_of_date, captured_at = now()"
-            if force else "DO NOTHING"
-        )
-        written = 0
-        for row in rows:
-            cur.execute(
-                f"""
-                INSERT INTO {COST_BASIS_BASELINE_TABLE} (symbol, quantity, avg_price, as_of_date)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (symbol) {on_conflict}
-                """,
-                [row["symbol"], row["quantity"], row["avg_price"], row["as_of_date"]],
-            )
-            written += cur.rowcount
-        conn.commit()
-        return written
-
-
-def load_baseline_row(symbol: str) -> dict | None:
-    with get_conn() as conn, conn.cursor() as cur:
-        cur.execute(
-            f"SELECT symbol, quantity, avg_price, as_of_date FROM {COST_BASIS_BASELINE_TABLE} WHERE symbol = %s",
-            [symbol],
-        )
-        row = cur.fetchone()
-        if not row:
-            return None
-        return {"symbol": row[0], "quantity": row[1], "avg_price": row[2], "as_of_date": str(row[3])}
-
-
 def upsert_trades(rows: list[dict]) -> int:
     """Inserts fills pulled from Kite's trade book. trade_id is the primary
     key, so re-running the daily sync (or the manual 'Sync now' button)
@@ -193,18 +154,6 @@ def load_symbol_trades(symbol: str) -> list[dict]:
         ]
 
 
-def load_all_baselines() -> dict[str, dict]:
-    """Bulk version of load_baseline_row -- one query for every symbol
-    instead of one connection per symbol, for callers (cost_basis_state_sync)
-    that need every symbol's baseline at once."""
-    with get_conn() as conn, conn.cursor() as cur:
-        cur.execute(f"SELECT symbol, quantity, avg_price, as_of_date FROM {COST_BASIS_BASELINE_TABLE}")
-        return {
-            r[0]: {"symbol": r[0], "quantity": r[1], "avg_price": r[2], "as_of_date": str(r[3])}
-            for r in cur.fetchall()
-        }
-
-
 def load_all_trades() -> dict[str, list[dict]]:
     """Bulk version of load_symbol_trades -- one query for every symbol's
     trades instead of one connection per symbol."""
@@ -224,17 +173,6 @@ def load_all_trades() -> dict[str, list[dict]]:
         return by_symbol
 
 
-def list_traded_symbols() -> list[str]:
-    with get_conn() as conn, conn.cursor() as cur:
-        cur.execute(
-            f"""
-            SELECT symbol FROM {COST_BASIS_BASELINE_TABLE}
-            UNION
-            SELECT DISTINCT symbol FROM {COST_BASIS_TRADES_TABLE}
-            ORDER BY symbol
-            """
-        )
-        return [r[0] for r in cur.fetchall()]
 
 
 def upsert_cost_basis_state(rows: list[dict]) -> None:

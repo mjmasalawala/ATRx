@@ -216,11 +216,10 @@ def cost_basis_ledger_endpoint():
     if not symbol:
         return jsonify({"error": "symbol query param is required"}), 400
     try:
-        baseline = db_store.load_baseline_row(symbol)
         trades = db_store.load_symbol_trades(symbol)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    return jsonify(replay_cost_basis(symbol, baseline, trades))
+    return jsonify(replay_cost_basis(symbol, trades))
 
 
 def cost_basis_upload_trades_endpoint():

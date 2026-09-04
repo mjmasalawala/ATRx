@@ -200,7 +200,7 @@ function render() {
   const filtered = rows.filter(r => r.symbol.toUpperCase().includes(query));
 
   if (!rows.length) {
-    tableWrap.innerHTML = '<div class="empty-state">No trades imported yet. Seed a baseline and upload a trades CSV.</div>';
+    tableWrap.innerHTML = '<div class="empty-state">No trades imported yet. Upload a trades CSV to get started.</div>';
     return;
   }
   if (!filtered.length) {
