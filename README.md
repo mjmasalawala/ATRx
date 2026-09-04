@@ -80,6 +80,48 @@ token in Redis → **Run Screener** calls `/api/run-screener`, which reads
 that token, runs the same logic as the CLI, renders results in the page,
 and uploads a CSV snapshot to Blob storage.
 
+### Request processing method
+
+`/api/run-screener` runs on Vercel's **Hobby plan, which hard-caps a
+single function invocation at 60 seconds** (`vercel.json` already sets
+`maxDuration: 60`, the max Hobby allows). Every symbol in the selected
+universe tier (~80 for each of `large_cap`/`mid_cap`/`small_cap`) needs
+its own Kite historical-data request, and Kite's historical API is
+limited to **3 requests/second**, so those requests are made
+**sequentially, one symbol at a time, in a single loop** — nothing is
+batched or parallelized, and nothing is split across multiple function
+calls.
+
+The rate limit itself is enforced by spacing request *start* times 1/3s
+apart, rather than sleeping a flat 1/3s after every request regardless of
+how long the request itself took:
+
+```python
+next_request_at = time_module.monotonic()
+for sym, token in tokens.items():
+    wait = next_request_at - time_module.monotonic()
+    if wait > 0:
+        time_module.sleep(wait)
+    next_request_at = time_module.monotonic() + (1.0 / 3.0)
+    df = fetch_history(kite, token, calendar_days)
+```
+
+The earlier version slept a full 0.33s *on top of* each request's own
+latency, so every symbol cost `request_time + 0.33s` — with ~80 symbols,
+that wasted overhead was enough to push `small_cap` runs past the 60s
+cap, surfacing as a raw (non-JSON) Vercel timeout page in the UI rather
+than a proper error message. Spacing request *starts* instead of adding
+a sleep after every call keeps the same 3 req/sec ceiling while costing
+each symbol only `max(request_time, 0.33s)` — reclaiming several seconds
+across a full run without changing what's actually sent to Kite. This
+applies identically to all three universe tiers, since they all run
+through the same `_run_screener()` loop in `screener.py`.
+
+If a run still times out (e.g. after raising a tier's symbol count),
+the next lever is trimming that tier's universe size in
+`screener_universes` (see the migration list above), not the rate-limit
+logic — a Hobby-plan function simply cannot run longer than 60s.
+
 ## 1. The idea in one sentence
 
 Volatile stocks develop price levels that repeatedly act as a floor —
