@@ -121,8 +121,22 @@
     display: none;
   }
   #configSection.visible { display: block; }
+  .config-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+  }
+  .config-header:hover .config-toggle { color: var(--accent); }
+  #configSection.collapsed .config-header { margin-bottom: 0; }
   #configSection h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
   #configSection .sub { color: var(--text-dim); font-size: 12px; margin: 0 0 16px; }
+  .config-toggle {
+    background: none; border: none; color: var(--text-dim); font-size: 12px;
+    font-family: 'Space Grotesk', sans-serif; padding: 4px 8px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; flex: none;
+  }
+  .config-toggle .chevron { display: inline-block; transition: transform 0.15s ease; font-size: 10px; }
+  #configSection.collapsed .config-toggle .chevron { transform: rotate(-90deg); }
+  #configSection.collapsed #configBody { display: none; }
   .config-group { margin-bottom: 14px; }
   .config-group-label {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
@@ -260,12 +274,19 @@
 </div>
 
 <div id="configSection">
-  <h2>Screening configuration</h2>
-  <p class="sub">Starting values are copied from the main ATRx Screener's current configuration -- edit freely here, changes only apply to this run and don't affect the main screener.</p>
-  <div id="configGroups"></div>
-  <div id="configWarnings"></div>
-  <div class="config-footer">
-    <button id="resetConfigBtn" type="button">Reset to Screener's values</button>
+  <div class="config-header" id="configHeader">
+    <div>
+      <h2>Screening configuration</h2>
+      <p class="sub">Starting values are copied from the main ATRx Screener's current configuration -- edit freely here, changes only apply to this run and don't affect the main screener.</p>
+    </div>
+    <button class="config-toggle" id="configToggleBtn" type="button"><span class="chevron">▾</span> <span id="configToggleLabel">Hide</span></button>
+  </div>
+  <div id="configBody">
+    <div id="configGroups"></div>
+    <div id="configWarnings"></div>
+    <div class="config-footer">
+      <button id="resetConfigBtn" type="button">Reset to Screener's values</button>
+    </div>
   </div>
 </div>
 
@@ -564,6 +585,20 @@ document.getElementById("loginBtn").addEventListener("click", () => {
 document.getElementById("resetConfigBtn").addEventListener("click", () => {
   applyConfigValues(DEFAULT_CONFIG);
 });
+
+const CONFIG_COLLAPSE_KEY = "atrx_stock_config_collapsed";
+function setConfigCollapsed(collapsed) {
+  document.getElementById("configSection").classList.toggle("collapsed", collapsed);
+  document.getElementById("configToggleLabel").textContent = collapsed ? "Show" : "Hide";
+  localStorage.setItem(CONFIG_COLLAPSE_KEY, collapsed ? "1" : "0");
+}
+document.getElementById("configHeader").addEventListener("click", () => {
+  const collapsed = !document.getElementById("configSection").classList.contains("collapsed");
+  setConfigCollapsed(collapsed);
+});
+try {
+  setConfigCollapsed(localStorage.getItem(CONFIG_COLLAPSE_KEY) === "1");
+} catch {}
 
 document.getElementById("configGroups").addEventListener("input", (e) => {
   if (e.target.matches("input[data-key]")) checkConfigWarnings();
