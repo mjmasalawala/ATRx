@@ -34,6 +34,8 @@ COST_BASIS_SYNC_STATE_TABLE = "cost_basis_sync_state"
 NSE_HOLIDAYS_TABLE = "nse_holidays"
 SCREENER_ALERTS_SENT_TABLE = "screener_alerts_sent"
 
+INSTRUMENTS_TABLE = "instruments"
+
 
 def _connection_string() -> str:
     for name in _ENV_VAR_CANDIDATES:
@@ -94,6 +96,18 @@ def save_universe(tier: str, symbols: list[str], note: str = "") -> None:
             [tier, note, Json(symbols)],
         )
         conn.commit()
+
+
+def list_instruments_by_index() -> dict[str, list[str]]:
+    """Returns {index_name: [ticker, ...]}, tickers ordered alphabetically
+    for deterministic chunking by callers that split an index into
+    fixed-size universe batches."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT index_name, ticker FROM {INSTRUMENTS_TABLE} ORDER BY index_name, ticker")
+        by_index: dict[str, list[str]] = {}
+        for index_name, ticker in cur.fetchall():
+            by_index.setdefault(index_name, []).append(ticker)
+        return by_index
 
 
 def save_baseline(rows: list[dict], force: bool = False) -> int:
@@ -177,6 +191,37 @@ def load_symbol_trades(symbol: str) -> list[dict]:
             }
             for r in cur.fetchall()
         ]
+
+
+def load_all_baselines() -> dict[str, dict]:
+    """Bulk version of load_baseline_row -- one query for every symbol
+    instead of one connection per symbol, for callers (cost_basis_state_sync)
+    that need every symbol's baseline at once."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT symbol, quantity, avg_price, as_of_date FROM {COST_BASIS_BASELINE_TABLE}")
+        return {
+            r[0]: {"symbol": r[0], "quantity": r[1], "avg_price": r[2], "as_of_date": str(r[3])}
+            for r in cur.fetchall()
+        }
+
+
+def load_all_trades() -> dict[str, list[dict]]:
+    """Bulk version of load_symbol_trades -- one query for every symbol's
+    trades instead of one connection per symbol."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT symbol, trade_id, side, quantity, price, trade_time, order_id
+            FROM {COST_BASIS_TRADES_TABLE} ORDER BY symbol, trade_time ASC
+            """
+        )
+        by_symbol: dict[str, list[dict]] = {}
+        for r in cur.fetchall():
+            by_symbol.setdefault(r[0], []).append({
+                "trade_id": r[1], "side": r[2], "quantity": r[3], "price": r[4],
+                "trade_time": r[5].isoformat(), "order_id": r[6],
+            })
+        return by_symbol
 
 
 def list_traded_symbols() -> list[str]:

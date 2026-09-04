@@ -53,8 +53,12 @@ def main():
     if written < len(rows) and not args.force:
         print("Some symbols already had a baseline row and were left alone -- re-run with --force to overwrite.")
 
-    updated_symbols = cost_basis_state_sync.recompute_all()
-    print(f"Recomputed cost_basis_state for {len(updated_symbols)} symbol(s) -- they'll now show on the Cost Basis page.")
+    recompute_result = cost_basis_state_sync.recompute_all()
+    print(f"Recomputed cost_basis_state for {len(recompute_result['updated'])} symbol(s) -- they'll now show on the Cost Basis page.")
+    if recompute_result["failed"]:
+        print(f"{len(recompute_result['failed'])} symbol(s) FAILED to recompute and will not show up:")
+        for f in recompute_result["failed"]:
+            print(f"  {f['symbol']}: {f['error']}")
 
 
 if __name__ == "__main__":

@@ -64,6 +64,14 @@
   .sync-btn:disabled { opacity: 0.5; cursor: default; }
   .sync-status { font-size: 12px; color: var(--text-dim); margin-top: 8px; text-align: right; }
 
+  #sync-status.banner {
+    text-align: left; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border); font-size: 13px;
+  }
+  #sync-status.banner.error { background: rgba(235,87,87,0.1); border-color: var(--red); color: var(--red); }
+  #sync-status.banner.warn { background: rgba(224,168,87,0.1); border-color: var(--accent); color: var(--accent); }
+  #sync-status.banner.ok { background: rgba(111,207,151,0.1); border-color: var(--green); color: var(--green); }
+
   .content { padding: 24px 32px; }
   .filter-input {
     width: 100%; max-width: 320px; background: var(--surface); border: 1px solid var(--border);
@@ -309,29 +317,46 @@ fileInput.addEventListener('change', async () => {
   if (!file) return;
 
   syncBtn.disabled = true;
+  syncStatus.className = 'sync-status banner';
   syncStatus.style.display = 'block';
-  syncStatus.textContent = 'Uploading...';
+  syncStatus.textContent = `Uploading ${file.name}...`;
   try {
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch('/api/cost-basis-upload-trades', { method: 'POST', body: formData });
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`Server returned a non-JSON response (HTTP ${res.status}) -- likely a timeout or crash. Check the Vercel function logs.`);
+    }
     if (!res.ok) {
-      syncStatus.textContent = data.error || 'Upload failed.';
+      syncStatus.className = 'sync-status banner error';
+      syncStatus.textContent = data.error || `Upload failed (HTTP ${res.status}).`;
+      console.error('Trade upload failed:', data);
       return;
     }
     let text = `Imported ${data.inserted} new trade(s) of ${data.parsed} parsed, ` +
-      `across ${(data.symbols_updated || []).length} ticker(s).`;
+      `across ${(data.symbols_updated || []).length} ticker(s). Recomputed ${data.state_updated} symbol(s) total.`;
     if (data.skipped_rows && data.skipped_rows.length) {
-      text += ` ${data.skipped_rows.length} row(s) couldn't be parsed (row ` +
+      text += ` ${data.skipped_rows.length} CSV row(s) couldn't be parsed (row ` +
         data.skipped_rows.slice(0, 5).map(r => r.row).join(', ') +
         (data.skipped_rows.length > 5 ? ', ...' : '') + ').';
     }
+    if (data.state_failed && data.state_failed.length) {
+      text += ` ${data.state_failed.length} symbol(s) failed to recompute and won't appear: ` +
+        data.state_failed.map(f => `${f.symbol} (${f.error})`).join('; ') + '.';
+    }
+    const hadIssues = (data.skipped_rows && data.skipped_rows.length) || (data.state_failed && data.state_failed.length);
+    syncStatus.className = 'sync-status banner' + (hadIssues ? ' warn' : ' ok');
     syncStatus.textContent = text;
+    console.log('Trade upload result:', data);
     renderLastSynced(data.synced_at);
     await loadSummary();
   } catch (e) {
+    syncStatus.className = 'sync-status banner error';
     syncStatus.textContent = `Upload failed: ${e.message}`;
+    console.error('Trade upload error:', e);
   } finally {
     syncBtn.disabled = false;
   }

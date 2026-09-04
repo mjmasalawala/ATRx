@@ -111,7 +111,7 @@ def import_trades_csv(file_content: str) -> dict:
     rows, skipped = parse_trades_csv(file_content)
 
     inserted = db_store.upsert_trades(rows)
-    cost_basis_state_sync.recompute_all()
+    recompute_result = cost_basis_state_sync.recompute_all()
 
     now = datetime.now(timezone.utc)
     db_store.set_last_trades_sync(now)
@@ -121,5 +121,7 @@ def import_trades_csv(file_content: str) -> dict:
         "inserted": inserted,
         "symbols_updated": sorted({row["symbol"] for row in rows}),
         "skipped_rows": skipped,
+        "state_updated": len(recompute_result["updated"]),
+        "state_failed": recompute_result["failed"],
         "synced_at": now.isoformat(),
     }
