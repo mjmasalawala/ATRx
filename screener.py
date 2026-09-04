@@ -17,6 +17,7 @@ import csv
 import logging
 import sys
 import time as time_module
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -189,20 +190,12 @@ def score_candidates(rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["score"], reverse=True)
 
 
-def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier: str = "large_cap") -> dict:
-    """
-    Runs the full scan against an already-authenticated KiteConnect session
-    and returns the results as data (no file I/O, no sys.exit) so it can be
-    reused from both the CLI entrypoint and the web API handler.
-
-    `overrides` temporarily replaces CONFIG.TUNABLE_FIELDS values for the
-    duration of this call (restored in `finally`) -- lets the web UI's
-    config-confirmation step run with user-adjusted parameters without a
-    separate per-request Config instance threaded through every function.
-
-    `universe_tier` selects which market-cap tier (large_cap/mid_cap/
-    small_cap) to screen -- see db_store.load_universe.
-    """
+@contextmanager
+def _config_overrides(overrides: dict | None):
+    """Temporarily replaces CONFIG.TUNABLE_FIELDS values for the duration of
+    the `with` block (restored after, even on error) -- lets a caller run
+    with user-adjusted parameters without threading a separate per-request
+    Config instance through every function."""
     original_config_values = {}
     if overrides:
         for key, value in overrides.items():
@@ -210,14 +203,79 @@ def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier
                 raise ValueError(f"Unknown config parameter: {key}")
             original_config_values[key] = getattr(CONFIG, key)
             setattr(CONFIG, key, value)
-
     try:
-        result = _run_screener(kite, universe_tier)
-        _persist_config_used()
-        return result
+        yield
     finally:
         for key, value in original_config_values.items():
             setattr(CONFIG, key, value)
+
+
+def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier: str = "large_cap") -> dict:
+    """
+    Runs the full scan against an already-authenticated KiteConnect session
+    and returns the results as data (no file I/O, no sys.exit) so it can be
+    reused from both the CLI entrypoint and the web API handler.
+
+    `universe_tier` selects which market-cap tier (large_cap/mid_cap/
+    small_cap) to screen -- see db_store.load_universe.
+    """
+    with _config_overrides(overrides):
+        result = _run_screener(kite, universe_tier)
+        _persist_config_used()
+        return result
+
+
+def run_screener_symbol(kite: KiteConnect, symbol: str, overrides: dict | None = None) -> dict:
+    """
+    Runs the same level-detection + backtest pipeline as run_screener, but
+    against exactly one user-specified ticker instead of a universe tier --
+    this is the "ATRx Stock" page. Unlike the universe scan, there's no
+    relative-volatility pre-filter (that comparison only makes sense across
+    a universe of stocks), so whatever levels exist for this symbol are
+    always shown, regardless of how volatile it is.
+
+    Deliberately does NOT call _persist_config_used() -- the "last-used
+    parameters" convenience is reserved for the main screener page, so
+    experimenting with overrides here doesn't change what the tier scan
+    starts from next time.
+    """
+    symbol = symbol.strip().upper()
+    with _config_overrides(overrides):
+        tokens = resolve_tokens(kite, [symbol])
+        if symbol not in tokens:
+            raise RuntimeError(f"Symbol not found on {CONFIG.exchange}: {symbol}")
+
+        buffer_days = CONFIG.pivot_window + CONFIG.atr_period + CONFIG.forward_days_long
+        calendar_days = int((CONFIG.lookback_days + buffer_days) * 1.3)
+
+        df = fetch_history(kite, tokens[symbol], calendar_days)
+        if df is None:
+            raise RuntimeError(f"Could not fetch history for {symbol}.")
+
+        breakdown = build_symbol_breakdown(symbol, df)
+
+        if breakdown["status"] == "screened":
+            candidate_rows = [
+                {
+                    **{k: v for k, v in lvl.items() if k not in
+                       ("meets_criteria", "in_range", "is_candidate", "rejection_reasons", "pivots")},
+                    "symbol": symbol,
+                    "current_price": breakdown["current_price"],
+                    "atr_pct": breakdown["atr_pct"],
+                }
+                for lvl in breakdown["levels"] if lvl["is_candidate"]
+            ]
+            scored = score_candidates(candidate_rows)
+            score_lookup = {r["level"]: r["score"] for r in scored}
+            for lvl in breakdown["levels"]:
+                if lvl["is_candidate"]:
+                    lvl["score"] = score_lookup.get(lvl["level"])
+
+        return {
+            "generated_at": datetime.now().isoformat(),
+            "symbol": symbol,
+            "breakdown": breakdown,
+        }
 
 
 def _persist_config_used() -> None:

@@ -49,6 +49,7 @@
   }
   .nav-link:hover { background: var(--surface-alt); color: var(--text); }
   .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .nav-link.sub-link { padding-left: 34px; font-size: 12px; }
   .main-content { flex: 1; min-width: 0; }
 
   header { padding: 28px 32px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -104,6 +105,7 @@
 <nav class="sidebar">
   <div class="sidebar-title">ATRx</div>
   <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
   <a href="/cost-basis" class="nav-link active">Cost Basis</a>
 </nav>
 

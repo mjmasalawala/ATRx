@@ -26,13 +26,14 @@ from blob_store import upload_csv
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
-from screener import run_screener
+from screener import run_screener, run_screener_symbol
 from token_store import load_access_token, save_access_token
 
 app = Flask(__name__)
 
 _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
 _COST_BASIS_HTML_PATH = Path(__file__).resolve().parent.parent / "cost_basis.html"
+_ATRX_STOCK_HTML_PATH = Path(__file__).resolve().parent.parent / "atrx_stock.html"
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
@@ -51,6 +52,10 @@ def home():
 
 def cost_basis_page():
     return _serve_html(_COST_BASIS_HTML_PATH, "cost_basis.html not found")
+
+
+def atrx_stock_page():
+    return _serve_html(_ATRX_STOCK_HTML_PATH, "atrx_stock.html not found")
 
 
 def login():
@@ -148,6 +153,36 @@ def run_screener_endpoint():
     return jsonify(result)
 
 
+def run_screener_symbol_endpoint():
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return jsonify({"error": f"Token store not configured: {e}"}), 500
+
+    if not token:
+        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
+
+    body = request.get_json(silent=True) or {}
+    symbol = (body.get("symbol") or "").strip()
+    if not symbol:
+        return jsonify({"error": "symbol is required"}), 400
+    overrides = body.get("overrides") or None
+
+    try:
+        kite = get_kite_session_from_token(token)
+        result = run_screener_symbol(kite, symbol, overrides=overrides)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
+
+    return jsonify(result)
+
+
 def _store_csv_snapshot(rows: list[dict]):
     if not rows:
         return None, None
@@ -214,12 +249,14 @@ def sync_trades_now_endpoint():
 _ROUTES = {
     "": home,
     "cost-basis": cost_basis_page,
+    "atrx-stock": atrx_stock_page,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
     "config": config_endpoint,
     "universe-tiers": universe_tiers_endpoint,
     "run-screener": run_screener_endpoint,
+    "run-screener-symbol": run_screener_symbol_endpoint,
     "cost-basis-summary": cost_basis_summary_endpoint,
     "cost-basis-ledger": cost_basis_ledger_endpoint,
     "sync-trades": sync_trades_endpoint,

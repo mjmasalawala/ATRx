@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ATRx Screener</title>
+<title>ATRx Stock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -93,8 +93,27 @@
   #banner.error { display: block; background: rgba(225,97,91,0.12); color: var(--negative); border: 1px solid var(--negative); }
   #banner.info { display: block; background: rgba(224,168,87,0.12); color: var(--accent); border: 1px solid var(--accent); }
 
-  #configSection {
+  #tickerSection {
     margin: 24px 32px 0;
+    padding: 18px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: none;
+  }
+  #tickerSection.visible { display: block; }
+  .ticker-row { display: flex; align-items: flex-end; gap: 12px; }
+  .ticker-field { display: flex; flex-direction: column; gap: 5px; }
+  .ticker-field label { font-size: 11.5px; color: var(--text-dim); }
+  .ticker-field input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 14px;
+    padding: 9px 11px; width: 180px; text-transform: uppercase;
+  }
+  .ticker-field input:focus { outline: none; border-color: var(--accent); }
+
+  #configSection {
+    margin: 16px 32px 0;
     padding: 20px 24px;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -176,31 +195,22 @@
   .config-footer { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
   #resetConfigBtn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
 
-  .table-wrap { overflow-x: auto; padding: 24px 32px 40px; }
-  table { width: 100%; border-collapse: collapse; min-width: 1080px; }
-  th {
-    text-align: right; font-size: 11px; font-weight: 500; color: var(--text-dim);
-    padding: 8px 12px; border-bottom: 1px solid var(--border);
-    white-space: nowrap; user-select: none;
+  .result-wrap { padding: 24px 32px 40px; }
+  .result-summary {
+    display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 18px;
+    padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
   }
-  th:first-child, td:first-child { text-align: left; }
+  .stat { display: flex; flex-direction: column; gap: 4px; }
+  .stat .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .stat-value { font-size: 16px; font-family: 'IBM Plex Mono', monospace; }
 
-  td { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: right; white-space: nowrap; }
-  tbody tr.result-row:hover { background: var(--surface-alt); }
-  tr.row-dim { color: var(--text-dim); }
-  td.symbol { font-weight: 600; text-align: left; }
-  td.symbol.clickable { cursor: pointer; }
-  td.symbol .toggle { display: inline-block; width: 14px; color: var(--text-dim); font-size: 10px; }
-  .pos { color: var(--positive); }
-  .neg { color: var(--negative); }
-  .breach-flag { color: var(--negative); }
-
-  tr.detail-row td { padding: 0; border-bottom: 1px solid var(--border); }
-  .detail-wrap { padding: 10px 12px 16px 34px; background: var(--surface); }
-  .detail-wrap .detail-label { font-size: 11px; color: var(--text-dim); margin: 0 0 8px; }
-  table.detail-table { width: auto; min-width: 900px; margin: 0; white-space: normal; }
-  table.detail-table th { font-size: 10px; padding: 6px 10px; white-space: nowrap; }
-  table.detail-table td { font-size: 12px; padding: 6px 10px; }
+  table.detail-table { width: 100%; border-collapse: collapse; }
+  table.detail-table th {
+    text-align: right; font-size: 10px; font-weight: 500; color: var(--text-dim);
+    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.detail-table th:first-child, table.detail-table td:first-child { text-align: left; }
+  table.detail-table td { font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
   tr.level-pass td { background: rgba(76,175,125,0.07); }
   tr.level-fail td { background: rgba(225,97,91,0.05); }
   td.level-note {
@@ -208,15 +218,8 @@
     padding: 4px 10px 8px; white-space: normal; border-bottom: 1px solid var(--border);
   }
   td.level-note.reason-note { color: var(--negative); }
-
-  .tier-field { display: flex; flex-direction: column; gap: 5px; }
-  .tier-field label { font-size: 11px; color: var(--text-dim); }
-  .tier-field select {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px;
-    padding: 7px 9px; cursor: pointer; min-width: 200px;
-  }
-  .tier-field select:focus { outline: none; border-color: var(--accent); }
+  .pos { color: var(--positive); }
+  .neg { color: var(--negative); }
 
   #empty { color: var(--text-dim); font-size: 13px; padding: 0 32px; }
   footer { padding: 20px 32px 32px; color: var(--text-dim); font-size: 12px; line-height: 1.6; max-width: 720px; }
@@ -226,8 +229,8 @@
 
 <nav class="sidebar">
   <div class="sidebar-title">ATRx</div>
-  <a href="/" class="nav-link active">ATRx Screener</a>
-  <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
+  <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/atrx-stock" class="nav-link sub-link active">ATRx Stock</a>
   <a href="/cost-basis" class="nav-link">Cost Basis</a>
 </nav>
 
@@ -235,14 +238,10 @@
 
 <header>
   <div>
-    <h1>ATRx Screener</h1>
-    <div class="meta" id="meta">Not run yet.</div>
+    <h1>ATRx Stock</h1>
+    <div class="meta" id="meta">Enter a ticker and run.</div>
   </div>
   <div class="actions">
-    <div class="tier-field">
-      <label for="tierSelect">Universe</label>
-      <select id="tierSelect"></select>
-    </div>
     <span id="loginStatus">checking login…</span>
     <button id="loginBtn" class="secondary">Log in with Zerodha</button>
   </div>
@@ -250,31 +249,36 @@
 
 <div id="banner"></div>
 
-<div id="configSection">
-  <h2>Screening configuration</h2>
-  <p class="sub">Defaults are loaded from config.py. Review or adjust, then run -- values here apply to this run only.</p>
-  <div id="configGroups"></div>
-  <div id="configWarnings"></div>
-  <div class="config-footer">
-    <button id="runBtn">Run Screener</button>
-    <button id="resetConfigBtn" type="button">Reset to defaults</button>
+<div id="tickerSection">
+  <div class="ticker-row">
+    <div class="ticker-field">
+      <label for="tickerInput">Ticker</label>
+      <input id="tickerInput" type="text" placeholder="e.g. RELIANCE" autocomplete="off">
+    </div>
+    <button id="runBtn">Run</button>
   </div>
 </div>
 
-<div id="empty" style="display:none">The universe is empty -- add symbols to universe.json (or the database) and re-run.</div>
-
-<div class="table-wrap">
-  <table id="resultsTable" style="display:none">
-    <thead><tr id="headerRow"></tr></thead>
-    <tbody id="tbody"></tbody>
-  </table>
+<div id="configSection">
+  <h2>Screening configuration</h2>
+  <p class="sub">Starting values are copied from the main ATRx Screener's current configuration -- edit freely here, changes only apply to this run and don't affect the main screener.</p>
+  <div id="configGroups"></div>
+  <div id="configWarnings"></div>
+  <div class="config-footer">
+    <button id="resetConfigBtn" type="button">Reset to Screener's values</button>
+  </div>
 </div>
 
+<div id="empty" style="display:none"></div>
+
+<div class="result-wrap" id="resultWrap" style="display:none"></div>
+
 <footer>
-  This tool only screens and ranks -- it never places an order. Score, ATRx,
-  touches, breaches and the backtest columns are explained in README.md.
-  Nothing here is a recommendation to trade; review the sample size behind
-  any statistic (backtest n) before acting on it.
+  Same level-detection and backtest logic as the main ATRx Screener, run
+  against a single ticker instead of a universe tier -- there's no
+  relative-volatility pre-filter here (that only makes sense across a list
+  of stocks), so every level found for this symbol is shown regardless of
+  how volatile it is. This tool only screens -- it never places an order.
 </footer>
 
 <script>
@@ -282,8 +286,6 @@ const CONFIG_GROUPS = [
   { label: "Volatility", fields: [
     { key: "atr_period", label: "ATR period (days)", step: 1,
       tip: "Days averaged to measure volatility (ATR). Higher = smoother, slower-reacting reading. Lower = more sensitive to recent price swings." },
-    { key: "min_atr_percentile", label: "Min ATR percentile", step: 1,
-      tip: "Only keeps stocks whose current volatility ranks at/above this percentile within your own universe. Higher = fewer, more volatile candidates survive the first filter." },
   ]},
   { label: "Level detection", fields: [
     { key: "pivot_window", label: "Pivot window (days)", step: 1,
@@ -327,17 +329,6 @@ const CONFIG_GROUPS = [
   ]},
 ];
 
-const BREAKDOWN_COLUMNS = [
-  { key: "symbol", label: "Symbol" },
-  { key: "current_price", label: "Price" },
-  { key: "atr_pct", label: "ATR%" },
-  { key: "atr_percentile_rank", label: "ATR %ile" },
-  { key: "level_count", label: "Levels" },
-  { key: "candidate_count", label: "Qualify" },
-  { key: "best_score", label: "Best score" },
-  { key: "status", label: "Status" },
-];
-
 const LEVEL_COLUMNS = [
   { key: "level", label: "Level" },
   { key: "atr", label: "ATR" },
@@ -356,18 +347,12 @@ const LEVEL_COLUMNS = [
   { key: "score", label: "Score" },
 ];
 
-const STATUS_LABELS = {
-  screened_candidate: "candidate",
-  screened_no_candidate: "no qualifying level",
-  below_volatility_threshold: "below volatility filter",
-  insufficient_data: "insufficient data",
-  fetch_failed: "history fetch failed",
-  symbol_not_found: "not found on exchange",
+const STATUS_MESSAGES = {
+  insufficient_data: "Not enough historical data to compute ATR for this symbol.",
+  fetch_failed: "Could not fetch historical data for this symbol.",
 };
 
-let BREAKDOWN = [];
 let DEFAULT_CONFIG = {};
-const expandedSymbols = new Set();
 
 function fmt(val, decimals) {
   if (val === null || val === undefined) return "–";
@@ -469,19 +454,9 @@ function collectConfigOverrides() {
   return overrides;
 }
 
-function renderHeader() {
-  const row = document.getElementById("headerRow");
-  row.innerHTML = "";
-  BREAKDOWN_COLUMNS.forEach(col => {
-    const th = document.createElement("th");
-    th.textContent = col.label;
-    row.appendChild(th);
-  });
-}
-
 function levelDetailHtml(symbol, levels) {
   if (levels.length === 0) {
-    return `<div class="detail-wrap"><p class="detail-label">No pivot clusters at all were found for ${symbol} in the lookback window.</p></div>`;
+    return `<p class="detail-label" style="color:var(--text-dim);font-size:13px">No pivot clusters at all were found for ${symbol} in the lookback window.</p>`;
   }
   const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
   const rows = levels.map(lvl => {
@@ -510,69 +485,44 @@ function levelDetailHtml(symbol, levels) {
     return `<tr class="${rowClass}">${cells}</tr>` + extraRows.join("");
   }).join("");
   return `
-    <div class="detail-wrap">
-      <p class="detail-label">Every pivot cluster found for ${symbol} -- green rows qualify as a result today, red rows show why they don't.</p>
-      <table class="detail-table">
-        <thead><tr>${headerCells}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
+    <table class="detail-table">
+      <thead><tr>${headerCells}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
   `;
 }
 
-function renderRows() {
-  const tbody = document.getElementById("tbody");
-  tbody.innerHTML = "";
+function renderResult(data) {
+  const wrap = document.getElementById("resultWrap");
+  const empty = document.getElementById("empty");
+  const breakdown = data.breakdown;
 
-  BREAKDOWN.forEach(b => {
-    const levels = b.levels || [];
-    const candidateLevels = levels.filter(l => l.is_candidate);
-    const isScreened = b.status === "screened";
-    const statusKey = isScreened
-      ? (candidateLevels.length ? "screened_candidate" : "screened_no_candidate")
-      : b.status;
-    const bestScore = candidateLevels.length ? Math.max(...candidateLevels.map(l => l.score)) : null;
-    const isOpen = expandedSymbols.has(b.symbol);
+  if (breakdown.status !== "screened") {
+    wrap.style.display = "none";
+    empty.style.display = "block";
+    empty.textContent = STATUS_MESSAGES[breakdown.status] || `Could not screen ${breakdown.symbol}.`;
+    return;
+  }
+  empty.style.display = "none";
 
-    const tr = document.createElement("tr");
-    tr.className = "result-row" + (isScreened ? "" : " row-dim");
-    const symbolCell = isScreened
-      ? `<td class="symbol clickable"><span class="toggle">${isOpen ? "▾" : "▸"}</span>${b.symbol}</td>`
-      : `<td class="symbol">${b.symbol}</td>`;
-    const statusClass = statusKey === "screened_candidate" ? "pos"
-      : (statusKey === "below_volatility_threshold" || statusKey === "screened_no_candidate") ? "" : "neg";
-
-    tr.innerHTML = `
-      ${symbolCell}
-      <td class="num">${b.current_price != null ? fmt(b.current_price, 2) : "–"}</td>
-      <td class="num">${b.atr_pct != null ? fmt(b.atr_pct, 2) + "%" : "–"}</td>
-      <td class="num">${b.atr_percentile_rank != null ? fmt(b.atr_percentile_rank, 1) : "–"}</td>
-      <td class="num">${levels.length || "–"}</td>
-      <td class="num">${isScreened ? candidateLevels.length : "–"}</td>
-      <td class="num ${bestScore != null && bestScore >= 0 ? "pos" : bestScore != null ? "neg" : ""}">${bestScore != null ? fmt(bestScore, 3) : "–"}</td>
-      <td class="${statusClass}">${STATUS_LABELS[statusKey] || b.status}</td>
-    `;
-    if (isScreened) {
-      tr.querySelector(".symbol").addEventListener("click", () => {
-        if (expandedSymbols.has(b.symbol)) expandedSymbols.delete(b.symbol);
-        else expandedSymbols.add(b.symbol);
-        renderRows();
-      });
-    }
-    tbody.appendChild(tr);
-
-    if (isOpen) {
-      const detailTr = document.createElement("tr");
-      detailTr.className = "detail-row";
-      detailTr.innerHTML = `<td colspan="${BREAKDOWN_COLUMNS.length}">${levelDetailHtml(b.symbol, levels)}</td>`;
-      tbody.appendChild(detailTr);
-    }
-  });
+  const candidateCount = breakdown.levels.filter(l => l.is_candidate).length;
+  wrap.innerHTML = `
+    <div class="result-summary">
+      <div class="stat"><span class="stat-label">Symbol</span><span class="stat-value">${escapeHtml(breakdown.symbol)}</span></div>
+      <div class="stat"><span class="stat-label">Price</span><span class="stat-value">${fmt(breakdown.current_price, 2)}</span></div>
+      <div class="stat"><span class="stat-label">ATR%</span><span class="stat-value">${fmt(breakdown.atr_pct, 2)}%</span></div>
+      <div class="stat"><span class="stat-label">Levels found</span><span class="stat-value">${breakdown.levels.length}</span></div>
+      <div class="stat"><span class="stat-label">Qualifying today</span><span class="stat-value ${candidateCount ? 'pos' : ''}">${candidateCount}</span></div>
+    </div>
+    ${levelDetailHtml(breakdown.symbol, breakdown.levels)}
+  `;
+  wrap.style.display = "block";
 }
 
 async function checkStatus() {
   const loginStatusEl = document.getElementById("loginStatus");
   const loginBtn = document.getElementById("loginBtn");
+  const tickerSection = document.getElementById("tickerSection");
   const configSection = document.getElementById("configSection");
   try {
     const res = await fetch("/api/status");
@@ -581,12 +531,14 @@ async function checkStatus() {
       loginStatusEl.textContent = "logged in";
       loginStatusEl.className = "ok";
       loginBtn.textContent = "Re-login";
+      tickerSection.classList.add("visible");
       configSection.classList.add("visible");
       loadConfig();
     } else {
       loginStatusEl.textContent = "not logged in";
       loginStatusEl.className = "";
       loginBtn.textContent = "Log in with Zerodha";
+      tickerSection.classList.remove("visible");
       configSection.classList.remove("visible");
     }
   } catch {
@@ -605,23 +557,6 @@ async function loadConfig() {
   }
 }
 
-const TIER_LABELS = { large_cap: "Large Cap", mid_cap: "Mid Cap", small_cap: "Small Cap" };
-
-async function loadTiers() {
-  const select = document.getElementById("tierSelect");
-  try {
-    const res = await fetch("/api/universe-tiers");
-    const tiers = await res.json();
-    select.innerHTML = tiers.map(t => {
-      const label = TIER_LABELS[t.tier] || t.tier;
-      const count = t.symbol_count != null ? ` (${t.symbol_count})` : "";
-      return `<option value="${escapeHtml(t.tier)}" title="${escapeHtml(t.note || "")}">${escapeHtml(label)}${count}</option>`;
-    }).join("");
-  } catch (e) {
-    select.innerHTML = `<option value="large_cap">Large Cap</option>`;
-  }
-}
-
 document.getElementById("loginBtn").addEventListener("click", () => {
   window.location.href = "/api/login";
 });
@@ -634,26 +569,30 @@ document.getElementById("configGroups").addEventListener("input", (e) => {
   if (e.target.matches("input[data-key]")) checkConfigWarnings();
 });
 
-document.getElementById("runBtn").addEventListener("click", async () => {
+async function runForTicker() {
   const runBtn = document.getElementById("runBtn");
   const meta = document.getElementById("meta");
-  const table = document.getElementById("resultsTable");
+  const wrap = document.getElementById("resultWrap");
   const empty = document.getElementById("empty");
+  const symbol = document.getElementById("tickerInput").value.trim().toUpperCase();
+
+  if (!symbol) {
+    banner("error", "Enter a ticker first.");
+    return;
+  }
 
   runBtn.disabled = true;
   runBtn.textContent = "Running…";
   clearBanner();
   empty.style.display = "none";
-  table.style.display = "none";
-  expandedSymbols.clear();
+  wrap.style.display = "none";
 
   try {
     const overrides = collectConfigOverrides();
-    const universe_tier = document.getElementById("tierSelect").value || "large_cap";
-    const res = await fetch("/api/run-screener", {
+    const res = await fetch("/api/run-screener-symbol", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ overrides, universe_tier }),
+      body: JSON.stringify({ symbol, overrides }),
     });
     const data = await res.json();
 
@@ -662,39 +601,21 @@ document.getElementById("runBtn").addEventListener("click", async () => {
       return;
     }
 
-    BREAKDOWN = data.screening_breakdown || [];
-    meta.innerHTML =
-      `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
-      ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
-      ` &middot; <span class="num">${data.universe_size}</span> symbols scanned` +
-      ` &middot; <span class="num">${data.volatile_count}</span> passed the volatility filter` +
-      ` (ATR% &ge; <span class="num">${fmt(data.atr_threshold_pct, 2)}%</span>)` +
-      ` &middot; <span class="num">${data.candidate_count}</span> candidates` +
-      (data.csv_url ? ` &middot; <a href="${data.csv_url}" target="_blank" style="color:var(--accent)">CSV snapshot</a>` : "");
-
-    if (BREAKDOWN.length === 0) {
-      empty.style.display = "block";
-    } else {
-      renderHeader();
-      renderRows();
-      table.style.display = "table";
-    }
+    meta.innerHTML = `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span> for <span class="num">${escapeHtml(data.symbol)}</span>`;
+    renderResult(data);
   } catch (e) {
     banner("error", "Request failed: " + e.message);
   } finally {
     runBtn.disabled = false;
-    runBtn.textContent = "Run Screener";
+    runBtn.textContent = "Run";
   }
-});
-
-const params = new URLSearchParams(window.location.search);
-if (params.get("login") === "success") banner("info", "Logged in with Zerodha.");
-if (params.get("login") === "failed") {
-  const reason = params.get("reason");
-  banner("error", reason ? `Login failed: ${reason}` : "Login failed. Please try again.");
 }
 
-loadTiers();
+document.getElementById("runBtn").addEventListener("click", runForTicker);
+document.getElementById("tickerInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runForTicker();
+});
+
 checkStatus();
 </script>
 
