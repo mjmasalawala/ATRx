@@ -113,12 +113,19 @@
 
 <header>
   <h1>Cost Basis</h1>
-  <div>
-    <button class="sync-btn" id="sync-btn">Sync now</button>
+  <div style="text-align:right">
+    <button class="sync-btn" id="sync-btn">Upload trades CSV</button>
+    <input type="file" id="file-input" accept=".csv" style="display:none">
+    <div class="sync-status" id="last-synced" style="display:block"></div>
   </div>
 </header>
 
 <div class="content">
+  <p style="color:var(--text-dim);font-size:12px;margin:0 0 14px;max-width:640px">
+    Export your tradebook from Kite Console (kite.zerodha.com/console &rarr; Reports &rarr; Tradebook) for
+    whatever date range you need, then upload the CSV here. Already-imported trades are skipped
+    automatically (matched by Kite's own trade ID), so it's safe to re-upload an overlapping date range.
+  </p>
   <div id="sync-status" class="sync-status" style="display:none"></div>
   <input class="filter-input" id="filter-input" type="text" placeholder="Filter by ticker...">
   <div id="table-wrap">
@@ -132,7 +139,9 @@
 const tableWrap = document.getElementById('table-wrap');
 const filterInput = document.getElementById('filter-input');
 const syncBtn = document.getElementById('sync-btn');
+const fileInput = document.getElementById('file-input');
 const syncStatus = document.getElementById('sync-status');
+const lastSyncedEl = document.getElementById('last-synced');
 
 let rows = [];
 let expanded = null;
@@ -146,6 +155,25 @@ function fmtNum(n, digits = 2) {
 function pnlClass(n) {
   if (n === null || n === undefined) return '';
   return n > 0 ? 'positive' : n < 0 ? 'negative' : '';
+}
+
+function renderLastSynced(iso) {
+  if (!iso) {
+    lastSyncedEl.textContent = 'Trades never uploaded yet.';
+    return;
+  }
+  const when = new Date(iso);
+  lastSyncedEl.textContent = `Last uploaded ${when.toLocaleString()}`;
+}
+
+async function loadLastSynced() {
+  try {
+    const res = await fetch('/api/cost-basis-sync-status');
+    const data = await res.json();
+    renderLastSynced(data.last_synced_at);
+  } catch (e) {
+    lastSyncedEl.textContent = '';
+  }
 }
 
 async function loadSummary() {
@@ -164,7 +192,7 @@ function render() {
   const filtered = rows.filter(r => r.symbol.toUpperCase().includes(query));
 
   if (!rows.length) {
-    tableWrap.innerHTML = '<div class="empty-state">No trades synced yet. Seed a baseline and run a sync.</div>';
+    tableWrap.innerHTML = '<div class="empty-state">No trades imported yet. Seed a baseline and upload a trades CSV.</div>';
     return;
   }
   if (!filtered.length) {
@@ -273,31 +301,44 @@ async function toggleLedger(symbol) {
 
 filterInput.addEventListener('input', render);
 
-syncBtn.addEventListener('click', async () => {
+syncBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  fileInput.value = '';
+  if (!file) return;
+
   syncBtn.disabled = true;
   syncStatus.style.display = 'block';
-  syncStatus.textContent = 'Syncing...';
+  syncStatus.textContent = 'Uploading...';
   try {
-    const res = await fetch('/api/sync-trades-now', { method: 'POST' });
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/cost-basis-upload-trades', { method: 'POST', body: formData });
     const data = await res.json();
     if (!res.ok) {
-      syncStatus.textContent = data.error || 'Sync failed.';
-    } else if (data.reason) {
-      syncStatus.textContent = data.reason === 'not logged in'
-        ? 'Not logged in -- log in via the Screener page first.'
-        : data.reason;
-    } else {
-      syncStatus.textContent = `Synced ${data.synced} trade(s) across ${(data.symbols_updated || []).length} ticker(s).`;
-      await loadSummary();
+      syncStatus.textContent = data.error || 'Upload failed.';
+      return;
     }
+    let text = `Imported ${data.inserted} new trade(s) of ${data.parsed} parsed, ` +
+      `across ${(data.symbols_updated || []).length} ticker(s).`;
+    if (data.skipped_rows && data.skipped_rows.length) {
+      text += ` ${data.skipped_rows.length} row(s) couldn't be parsed (row ` +
+        data.skipped_rows.slice(0, 5).map(r => r.row).join(', ') +
+        (data.skipped_rows.length > 5 ? ', ...' : '') + ').';
+    }
+    syncStatus.textContent = text;
+    renderLastSynced(data.synced_at);
+    await loadSummary();
   } catch (e) {
-    syncStatus.textContent = `Sync failed: ${e.message}`;
+    syncStatus.textContent = `Upload failed: ${e.message}`;
   } finally {
     syncBtn.disabled = false;
   }
 });
 
 loadSummary();
+loadLastSynced();
 </script>
 </body>
 </html>

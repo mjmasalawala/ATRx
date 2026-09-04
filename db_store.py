@@ -29,6 +29,7 @@ DEFAULT_TIER = "large_cap"
 COST_BASIS_BASELINE_TABLE = "cost_basis_baseline"
 COST_BASIS_TRADES_TABLE = "cost_basis_trades"
 COST_BASIS_STATE_TABLE = "cost_basis_state"
+COST_BASIS_SYNC_STATE_TABLE = "cost_basis_sync_state"
 
 NSE_HOLIDAYS_TABLE = "nse_holidays"
 SCREENER_ALERTS_SENT_TABLE = "screener_alerts_sent"
@@ -212,6 +213,25 @@ def upsert_cost_basis_state(rows: list[dict]) -> None:
                     row["cumulative_realized"], row["lifetime_realized"], row["is_free"],
                 ],
             )
+        conn.commit()
+
+
+def get_last_trades_sync() -> str | None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT last_synced_at FROM {COST_BASIS_SYNC_STATE_TABLE} WHERE id = 1")
+        row = cur.fetchone()
+        return row[0].isoformat() if row and row[0] else None
+
+
+def set_last_trades_sync(when) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {COST_BASIS_SYNC_STATE_TABLE} (id, last_synced_at) VALUES (1, %s)
+            ON CONFLICT (id) DO UPDATE SET last_synced_at = EXCLUDED.last_synced_at
+            """,
+            [when],
+        )
         conn.commit()
 
 

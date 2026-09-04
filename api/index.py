@@ -24,6 +24,7 @@ import candidate_alert
 import db_store
 import kite_sync
 import nse_holidays_sync
+import trade_csv_import
 from blob_store import upload_csv
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
@@ -223,29 +224,36 @@ def cost_basis_ledger_endpoint():
     return jsonify(replay_cost_basis(symbol, baseline, trades))
 
 
-def sync_trades_endpoint():
-    provided = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
-    if not CRON_SECRET or provided != CRON_SECRET:
-        return jsonify({"error": "unauthorized"}), 401
+def cost_basis_upload_trades_endpoint():
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "No file uploaded (expected a 'file' field)."}), 400
+
     try:
-        result = kite_sync.sync_todays_trades()
+        content = upload.stream.read().decode("utf-8-sig")
+    except UnicodeDecodeError as e:
+        return jsonify({"error": f"Could not read file as UTF-8 CSV: {e}"}), 400
+
+    try:
+        result = trade_csv_import.import_trades_csv(content)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
+
     return jsonify(result)
 
 
-def sync_trades_now_endpoint():
+def cost_basis_sync_status_endpoint():
     try:
-        token = load_access_token()
-    except RuntimeError as e:
-        return jsonify({"error": f"Token store not configured: {e}"}), 500
-    if not token:
-        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
-    try:
-        result = kite_sync.sync_todays_trades()
+        last_synced_at = db_store.get_last_trades_sync()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    return jsonify(result)
+    return jsonify({"last_synced_at": last_synced_at})
 
 
 def download_holdings_baseline_endpoint():
@@ -312,8 +320,8 @@ _ROUTES = {
     "run-screener-symbol": run_screener_symbol_endpoint,
     "cost-basis-summary": cost_basis_summary_endpoint,
     "cost-basis-ledger": cost_basis_ledger_endpoint,
-    "sync-trades": sync_trades_endpoint,
-    "sync-trades-now": sync_trades_now_endpoint,
+    "cost-basis-upload-trades": cost_basis_upload_trades_endpoint,
+    "cost-basis-sync-status": cost_basis_sync_status_endpoint,
     "download-holdings-baseline": download_holdings_baseline_endpoint,
     "scan-candidates": scan_candidates_endpoint,
     "sync-nse-holidays": sync_nse_holidays_endpoint,

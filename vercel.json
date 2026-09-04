@@ -17,14 +17,13 @@
     { "source": "/api/run-screener-symbol", "destination": "/api/index?r=run-screener-symbol" },
     { "source": "/api/cost-basis-summary", "destination": "/api/index?r=cost-basis-summary" },
     { "source": "/api/cost-basis-ledger", "destination": "/api/index?r=cost-basis-ledger" },
-    { "source": "/api/sync-trades", "destination": "/api/index?r=sync-trades" },
-    { "source": "/api/sync-trades-now", "destination": "/api/index?r=sync-trades-now" },
+    { "source": "/api/cost-basis-upload-trades", "destination": "/api/index?r=cost-basis-upload-trades" },
+    { "source": "/api/cost-basis-sync-status", "destination": "/api/index?r=cost-basis-sync-status" },
     { "source": "/api/download-holdings-baseline", "destination": "/api/index?r=download-holdings-baseline" },
     { "source": "/api/scan-candidates", "destination": "/api/index?r=scan-candidates" },
     { "source": "/api/sync-nse-holidays", "destination": "/api/index?r=sync-nse-holidays" }
   ],
   "crons": [
-    { "path": "/api/sync-trades", "schedule": "30 10 * * *" },
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }
   ]
 }
