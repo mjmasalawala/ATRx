@@ -73,20 +73,29 @@
   #sync-status.banner.ok { background: rgba(111,207,151,0.1); border-color: var(--green); color: var(--green); }
 
   .content { padding: 24px 32px; }
+  .controls-row { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
   .filter-input {
-    width: 100%; max-width: 320px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; padding: 9px 12px; color: var(--text); font-family: inherit; font-size: 13px;
-    margin-bottom: 18px;
+    width: 100%; max-width: 280px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 11px; color: var(--text); font-family: inherit; font-size: 13px;
   }
   .filter-input:focus { outline: none; border-color: var(--accent); }
-
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th {
-    text-align: right; font-weight: 600; color: var(--text-dim); font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 12px; border-bottom: 1px solid var(--border);
+  .checkbox-label {
+    display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-dim);
+    cursor: pointer; user-select: none; white-space: nowrap;
   }
+  .checkbox-label input { accent-color: var(--accent); cursor: pointer; }
+
+  table { width: auto; max-width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th {
+    text-align: right; font-weight: 600; color: var(--text-dim); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  #table-wrap > table th { cursor: pointer; user-select: none; }
+  #table-wrap > table th:hover { color: var(--text); }
+  th .sort-arrow { display: inline-block; width: 10px; color: var(--accent); font-size: 9px; }
   th:first-child, td:first-child { text-align: left; }
-  td { text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }
+  td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
   tbody tr.symbol-row { cursor: pointer; }
   tbody tr.symbol-row:hover { background: var(--surface-alt); }
   .symbol-cell { font-family: 'Space Grotesk', sans-serif; font-weight: 600; }
@@ -135,7 +144,13 @@
     automatically (matched by Kite's own trade ID), so it's safe to re-upload an overlapping date range.
   </p>
   <div id="sync-status" class="sync-status" style="display:none"></div>
-  <input class="filter-input" id="filter-input" type="text" placeholder="Filter by ticker...">
+  <div class="controls-row">
+    <input class="filter-input" id="filter-input" type="text" placeholder="Filter by ticker...">
+    <label class="checkbox-label">
+      <input type="checkbox" id="hide-zero-checkbox">
+      Hide positions with 0 qty
+    </label>
+  </div>
   <div id="table-wrap">
     <div class="empty-state">Loading...</div>
   </div>
@@ -146,14 +161,34 @@
 <script>
 const tableWrap = document.getElementById('table-wrap');
 const filterInput = document.getElementById('filter-input');
+const hideZeroCheckbox = document.getElementById('hide-zero-checkbox');
 const syncBtn = document.getElementById('sync-btn');
 const fileInput = document.getElementById('file-input');
 const syncStatus = document.getElementById('sync-status');
 const lastSyncedEl = document.getElementById('last-synced');
 
+const COLUMNS = [
+  { key: 'symbol', label: 'Ticker', type: 'string' },
+  { key: 'quantity', label: 'Qty', type: 'number' },
+  { key: 'avg_cost', label: 'Avg cost / share', type: 'number' },
+  { key: 'total_cost', label: 'Total cost', type: 'number' },
+  { key: 'cumulative_realized', label: 'Realized (current lot)', type: 'number' },
+  { key: 'lifetime_realized', label: 'Lifetime realized', type: 'number' },
+];
+
 let rows = [];
 let expanded = null;
+let sortKey = 'symbol';
+let sortDir = 1; // 1 = ascending, -1 = descending
 const ledgerCache = {};
+
+try {
+  const saved = JSON.parse(localStorage.getItem('atrx_cost_basis_sort') || 'null');
+  if (saved && COLUMNS.some(c => c.key === saved.key)) {
+    sortKey = saved.key;
+    sortDir = saved.dir;
+  }
+} catch {}
 
 function fmtNum(n, digits = 2) {
   if (n === null || n === undefined) return '—';
@@ -195,33 +230,59 @@ async function loadSummary() {
   }
 }
 
+function setSort(key) {
+  if (sortKey === key) {
+    sortDir = -sortDir;
+  } else {
+    sortKey = key;
+    sortDir = 1;
+  }
+  try { localStorage.setItem('atrx_cost_basis_sort', JSON.stringify({ key: sortKey, dir: sortDir })); } catch {}
+  render();
+}
+
 function render() {
   const query = filterInput.value.trim().toUpperCase();
-  const filtered = rows.filter(r => r.symbol.toUpperCase().includes(query));
+  let filtered = rows.filter(r => r.symbol.toUpperCase().includes(query));
+  if (hideZeroCheckbox.checked) {
+    filtered = filtered.filter(r => Number(r.quantity) !== 0);
+  }
 
   if (!rows.length) {
     tableWrap.innerHTML = '<div class="empty-state">No trades imported yet. Upload a trades CSV to get started.</div>';
     return;
   }
   if (!filtered.length) {
-    tableWrap.innerHTML = '<div class="empty-state">No tickers match that filter.</div>';
+    tableWrap.innerHTML = '<div class="empty-state">No tickers match the current filter.</div>';
     return;
   }
 
+  const col = COLUMNS.find(c => c.key === sortKey);
+  filtered.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    let cmp;
+    if (col.type === 'string') {
+      cmp = String(av).localeCompare(String(bv));
+    } else {
+      cmp = (Number(av) || 0) - (Number(bv) || 0);
+    }
+    return cmp * sortDir;
+  });
+
   const table = document.createElement('table');
+  const headerCells = COLUMNS.map(c => {
+    const arrow = c.key === sortKey ? `<span class="sort-arrow">${sortDir === 1 ? '▲' : '▼'}</span>` : '<span class="sort-arrow"></span>';
+    return `<th data-key="${c.key}">${c.label}${arrow}</th>`;
+  }).join('');
   table.innerHTML = `
     <thead>
-      <tr>
-        <th>Ticker</th>
-        <th>Qty</th>
-        <th>Avg cost / share</th>
-        <th>Total cost</th>
-        <th>Realized (current lot)</th>
-        <th>Lifetime realized</th>
-      </tr>
+      <tr>${headerCells}</tr>
     </thead>
     <tbody></tbody>
   `;
+  table.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => setSort(th.dataset.key));
+  });
   const tbody = table.querySelector('tbody');
 
   for (const r of filtered) {
@@ -243,7 +304,7 @@ function render() {
       const ledgerTr = document.createElement('tr');
       ledgerTr.className = 'ledger-row';
       const td = document.createElement('td');
-      td.colSpan = 6;
+      td.colSpan = COLUMNS.length;
       td.appendChild(renderLedger(r.symbol));
       ledgerTr.appendChild(td);
       tbody.appendChild(ledgerTr);
@@ -308,6 +369,14 @@ async function toggleLedger(symbol) {
 }
 
 filterInput.addEventListener('input', render);
+
+try {
+  hideZeroCheckbox.checked = localStorage.getItem('atrx_cost_basis_hide_zero') === '1';
+} catch {}
+hideZeroCheckbox.addEventListener('change', () => {
+  try { localStorage.setItem('atrx_cost_basis_hide_zero', hideZeroCheckbox.checked ? '1' : '0'); } catch {}
+  render();
+});
 
 syncBtn.addEventListener('click', () => fileInput.click());
 
