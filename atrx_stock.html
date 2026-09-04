@@ -256,6 +256,7 @@
     <div class="meta" id="meta">Enter a ticker and run.</div>
   </div>
   <div class="actions">
+    <button id="downloadBaselineBtn" class="secondary" style="display:none">Download baseline positions</button>
     <span id="loginStatus">checking login…</span>
     <button id="loginBtn" class="secondary">Log in with Zerodha</button>
   </div>
@@ -545,6 +546,7 @@ async function checkStatus() {
   const loginBtn = document.getElementById("loginBtn");
   const tickerSection = document.getElementById("tickerSection");
   const configSection = document.getElementById("configSection");
+  const downloadBaselineBtn = document.getElementById("downloadBaselineBtn");
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
@@ -554,6 +556,7 @@ async function checkStatus() {
       loginBtn.textContent = "Re-login";
       tickerSection.classList.add("visible");
       configSection.classList.add("visible");
+      downloadBaselineBtn.style.display = "";
       loadConfig();
     } else {
       loginStatusEl.textContent = "not logged in";
@@ -561,6 +564,7 @@ async function checkStatus() {
       loginBtn.textContent = "Log in with Zerodha";
       tickerSection.classList.remove("visible");
       configSection.classList.remove("visible");
+      downloadBaselineBtn.style.display = "none";
     }
   } catch {
     loginStatusEl.textContent = "status unavailable";
@@ -580,6 +584,41 @@ async function loadConfig() {
 
 document.getElementById("loginBtn").addEventListener("click", () => {
   window.location.href = "/api/login";
+});
+
+document.getElementById("downloadBaselineBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("downloadBaselineBtn");
+  if (!confirm(
+    "Download your current Kite holdings and seed them as the Cost Basis " +
+    "starting point for each symbol?\n\nThis only fills in symbols that " +
+    "don't already have a baseline -- it won't overwrite one that's " +
+    "already there."
+  )) return;
+
+  btn.disabled = true;
+  btn.textContent = "Downloading…";
+  clearBanner();
+  try {
+    const res = await fetch("/api/download-holdings-baseline", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) {
+      banner("error", data.error || "Download failed.");
+      return;
+    }
+    if (data.reason) {
+      banner("error", data.reason === "not logged in"
+        ? "Not logged in -- log in with Zerodha first."
+        : data.reason);
+      return;
+    }
+    banner("info", `Fetched ${data.fetched} holding(s), seeded ${data.written} new baseline row(s)` +
+      (data.skipped ? ` (${data.skipped} already had a baseline and were left alone).` : "."));
+  } catch (e) {
+    banner("error", "Request failed: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Download baseline positions";
+  }
 });
 
 document.getElementById("resetConfigBtn").addEventListener("click", () => {

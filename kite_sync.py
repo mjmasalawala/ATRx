@@ -9,6 +9,7 @@ Triggered two ways, both calling sync_todays_trades():
   - the "Sync now" button on the Cost Basis page, POSTing /api/sync-trades-now
 """
 
+from datetime import date
 import logging
 
 import cost_basis
@@ -62,3 +63,39 @@ def sync_todays_trades() -> dict:
     db_store.upsert_cost_basis_state(state_rows)
 
     return {"synced": inserted, "symbols_updated": symbols, "notified": False}
+
+
+def download_holdings_baseline() -> dict:
+    """Dumps current Kite holdings into cost_basis_baseline -- the same
+    one-time seed scripts/seed_cost_basis_baseline.py does locally, but
+    triggered from the "Download baseline positions" button on the ATRx
+    Stock page using the browser's already-logged-in session, instead of
+    the interactive local-login script.
+
+    Deliberately never overwrites a symbol that already has a baseline row
+    (force=False) -- this is meant to capture your starting position once,
+    not to be re-run over an in-progress cost-basis history."""
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return {"fetched": 0, "written": 0, "reason": f"Token store not configured: {e}"}
+
+    if not token:
+        return {"fetched": 0, "written": 0, "reason": "not logged in"}
+
+    kite = get_kite_session_from_token(token)
+    holdings = kite.holdings()
+
+    rows = [
+        {
+            "symbol": h["tradingsymbol"],
+            "quantity": h["quantity"],
+            "avg_price": h["average_price"],
+            "as_of_date": date.today().isoformat(),
+        }
+        for h in holdings
+        if h["quantity"] > 0
+    ]
+
+    written = db_store.save_baseline(rows)
+    return {"fetched": len(rows), "written": written, "skipped": len(rows) - written}

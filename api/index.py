@@ -20,8 +20,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, Response, jsonify, redirect, request
 
+import candidate_alert
 import db_store
 import kite_sync
+import nse_holidays_sync
 from blob_store import upload_csv
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
@@ -246,6 +248,57 @@ def sync_trades_now_endpoint():
     return jsonify(result)
 
 
+def download_holdings_baseline_endpoint():
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return jsonify({"error": f"Token store not configured: {e}"}), 500
+    if not token:
+        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
+    try:
+        result = kite_sync.download_holdings_baseline()
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
+    return jsonify(result)
+
+
+def scan_candidates_endpoint():
+    provided = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not CRON_SECRET or provided != CRON_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    tier = (request.args.get("tier") or "").strip()
+    if not tier:
+        return jsonify({"error": "tier query param is required"}), 400
+
+    try:
+        result = candidate_alert.run_candidate_scan(tier)
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
+    return jsonify(result)
+
+
+def sync_nse_holidays_endpoint():
+    provided = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+    if not CRON_SECRET or provided != CRON_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+
+    year = request.args.get("year", type=int)
+    try:
+        result = nse_holidays_sync.sync_year(year)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(result)
+
+
 _ROUTES = {
     "": home,
     "cost-basis": cost_basis_page,
@@ -261,6 +314,9 @@ _ROUTES = {
     "cost-basis-ledger": cost_basis_ledger_endpoint,
     "sync-trades": sync_trades_endpoint,
     "sync-trades-now": sync_trades_now_endpoint,
+    "download-holdings-baseline": download_holdings_baseline_endpoint,
+    "scan-candidates": scan_candidates_endpoint,
+    "sync-nse-holidays": sync_nse_holidays_endpoint,
 }
 
 
