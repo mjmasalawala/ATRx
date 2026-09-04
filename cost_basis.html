@@ -324,8 +324,39 @@ function renderLedger(symbol) {
     return wrap;
   }
   if (ledger.error) {
-    wrap.style.color = 'var(--red)';
-    wrap.textContent = `Could not load ledger: ${ledger.error}`;
+    const errEl = document.createElement('p');
+    errEl.style.color = 'var(--red)';
+    errEl.style.margin = '0 0 10px';
+    errEl.textContent = `Could not compute cost basis: ${ledger.error}`;
+    wrap.appendChild(errEl);
+
+    if (ledger.raw_trades && ledger.raw_trades.length) {
+      const note = document.createElement('p');
+      note.style.color = 'var(--text-dim)';
+      note.style.margin = '0 0 8px';
+      note.textContent = `Every trade currently stored for this symbol (${ledger.raw_trades.length}), unprocessed -- compare against Kite's own tradebook to find what's missing:`;
+      wrap.appendChild(note);
+
+      const rawTable = document.createElement('table');
+      rawTable.innerHTML = `
+        <thead>
+          <tr><th>Trade ID</th><th>Exchange</th><th>When</th><th>Side</th><th>Qty</th><th>Price</th></tr>
+        </thead>
+        <tbody>
+          ${ledger.raw_trades.map(t => `
+            <tr>
+              <td style="text-align:left">${t.trade_id || ''}</td>
+              <td style="text-align:left">${t.exchange || ''}</td>
+              <td style="text-align:left">${(t.trade_time || '').replace('T', ' ').slice(0, 16)}</td>
+              <td class="${t.side === 'BUY' ? 'side-buy' : t.side === 'SELL' ? 'side-sell' : ''}" style="text-align:left">${t.side}</td>
+              <td>${fmtNum(t.quantity, 0)}</td>
+              <td>${fmtNum(t.price)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      `;
+      wrap.appendChild(rawTable);
+    }
     return wrap;
   }
   const table = document.createElement('table');
@@ -366,7 +397,9 @@ async function toggleLedger(symbol) {
     try {
       const res = await fetch(`/api/cost-basis-ledger?symbol=${encodeURIComponent(expanded)}`);
       const data = await res.json();
-      ledgerCache[expanded] = res.ok ? data : { error: data.error || `HTTP ${res.status}` };
+      ledgerCache[expanded] = res.ok
+        ? data
+        : { error: data.error || `HTTP ${res.status}`, raw_trades: data.raw_trades || [] };
     } catch (e) {
       ledgerCache[expanded] = { error: e.message };
     }

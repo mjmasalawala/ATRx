@@ -217,9 +217,16 @@ def cost_basis_ledger_endpoint():
         return jsonify({"error": "symbol query param is required"}), 400
     try:
         trades = db_store.load_symbol_trades(symbol)
-        result = replay_cost_basis(symbol, trades)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    try:
+        result = replay_cost_basis(symbol, trades)
+    except Exception as e:
+        # Replay failed (e.g. the oversell check) -- still return every raw
+        # trade currently stored for this symbol so the failure is
+        # diagnosable (compare against Kite's own records) instead of just
+        # an error with nothing to look at.
+        return jsonify({"error": str(e), "raw_trades": trades}), 500
     return jsonify(result)
 
 
