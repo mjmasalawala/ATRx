@@ -243,6 +243,7 @@
   <a href="/" class="nav-link active">ATRx Screener</a>
   <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
   <a href="/cost-basis" class="nav-link">Cost Basis</a>
+  <a href="/performance-log" class="nav-link">Performance Log</a>
 </nav>
 
 <div class="main-content">
@@ -298,6 +299,7 @@
   any statistic (backtest n) before acting on it.
 </footer>
 
+<script src="/performance-log-widget.js"></script>
 <script>
 const CONFIG_GROUPS = [
   { label: "Volatility", fields: [
@@ -375,6 +377,7 @@ const LEVEL_COLUMNS = [
   { key: "hit_rate_5d_pct", label: "Hit% 5d" },
   { key: "avg_fwd_ret_5d_pct", label: "AvgRet% 5d" },
   { key: "score", label: "Score" },
+  { key: "action", label: "" },
 ];
 
 const STATUS_LABELS = {
@@ -387,6 +390,7 @@ const STATUS_LABELS = {
 };
 
 let BREAKDOWN = [];
+let LAST_GENERATED_AT = null;
 let DEFAULT_CONFIG = {};
 const expandedSymbols = new Set();
 
@@ -505,9 +509,14 @@ function levelDetailHtml(symbol, levels) {
     return `<div class="detail-wrap"><p class="detail-label">No pivot clusters at all were found for ${symbol} in the lookback window.</p></div>`;
   }
   const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
-  const rows = levels.map(lvl => {
+  const rows = levels.map((lvl, lvlIdx) => {
     const rowClass = lvl.is_candidate ? "level-pass" : "level-fail";
     const cells = LEVEL_COLUMNS.map(c => {
+      if (c.key === "action") {
+        return lvl.is_candidate
+          ? `<td><button type="button" class="plw-trigger" data-symbol="${escapeHtml(symbol)}" data-level-idx="${lvlIdx}">Log Trade</button></td>`
+          : `<td></td>`;
+      }
       if (c.key === "meets_criteria" || c.key === "in_range") {
         const ok = lvl[c.key];
         return `<td class="${ok ? "pos" : "neg"}">${ok ? "yes" : "no"}</td>`;
@@ -698,6 +707,7 @@ document.getElementById("runBtn").addEventListener("click", async () => {
     }
 
     BREAKDOWN = data.screening_breakdown || [];
+    LAST_GENERATED_AT = data.generated_at;
     meta.innerHTML =
       `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
       ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
@@ -722,6 +732,21 @@ document.getElementById("runBtn").addEventListener("click", async () => {
   }
 });
 
+document.getElementById("tbody").addEventListener("click", (e) => {
+  const btn = e.target.closest(".plw-trigger");
+  if (!btn) return;
+  const symbol = btn.dataset.symbol;
+  const lvlIdx = parseInt(btn.dataset.levelIdx, 10);
+  const b = BREAKDOWN.find(row => row.symbol === symbol);
+  const lvl = b && b.levels && b.levels[lvlIdx];
+  if (!b || !lvl) return;
+  PerformanceLog.open({
+    symbol,
+    price: b.current_price,
+    meta: { ...lvl, signal_date: LAST_GENERATED_AT },
+  });
+});
+
 const params = new URLSearchParams(window.location.search);
 if (params.get("login") === "success") banner("info", "Logged in with Zerodha.");
 if (params.get("login") === "failed") {
@@ -731,6 +756,7 @@ if (params.get("login") === "failed") {
 
 loadTiers();
 checkStatus();
+PerformanceLog.init({ strategy: "atrx_screener" });
 </script>
 
 </div>

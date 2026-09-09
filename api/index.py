@@ -36,28 +36,41 @@ app = Flask(__name__)
 _INDEX_HTML_PATH = Path(__file__).resolve().parent.parent / "index.html"
 _COST_BASIS_HTML_PATH = Path(__file__).resolve().parent.parent / "cost_basis.html"
 _ATRX_STOCK_HTML_PATH = Path(__file__).resolve().parent.parent / "atrx_stock.html"
+_PERFORMANCE_LOG_HTML_PATH = Path(__file__).resolve().parent.parent / "performance_log.html"
+_PERFORMANCE_LOG_WIDGET_JS_PATH = Path(__file__).resolve().parent.parent / "performance_log_widget.js"
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 
-def _serve_html(path: Path, missing_message: str):
+def _serve_file(path: Path, missing_message: str, mimetype: str = "text/html"):
     try:
-        html = path.read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8")
     except OSError:
         return Response(missing_message, status=500)
-    return Response(html, mimetype="text/html")
+    return Response(content, mimetype=mimetype)
 
 
 def home():
-    return _serve_html(_INDEX_HTML_PATH, "index.html not found")
+    return _serve_file(_INDEX_HTML_PATH, "index.html not found")
 
 
 def cost_basis_page():
-    return _serve_html(_COST_BASIS_HTML_PATH, "cost_basis.html not found")
+    return _serve_file(_COST_BASIS_HTML_PATH, "cost_basis.html not found")
 
 
 def atrx_stock_page():
-    return _serve_html(_ATRX_STOCK_HTML_PATH, "atrx_stock.html not found")
+    return _serve_file(_ATRX_STOCK_HTML_PATH, "atrx_stock.html not found")
+
+
+def performance_log_page():
+    return _serve_file(_PERFORMANCE_LOG_HTML_PATH, "performance_log.html not found")
+
+
+def performance_log_widget_js():
+    return _serve_file(
+        _PERFORMANCE_LOG_WIDGET_JS_PATH, "performance_log_widget.js not found",
+        mimetype="application/javascript",
+    )
 
 
 def login():
@@ -295,10 +308,74 @@ def sync_nse_holidays_endpoint():
     return jsonify(result)
 
 
+def trades_endpoint():
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        strategy = (body.get("strategy") or "").strip()
+        symbol = (body.get("symbol") or "").strip().upper()
+        qty = body.get("qty")
+        entry_date = body.get("entry_date")
+        entry_price = body.get("entry_price")
+        if not strategy or not symbol or not qty or not entry_date or not entry_price:
+            return jsonify({"error": "strategy, symbol, qty, entry_date, entry_price are all required"}), 400
+        try:
+            trade_id = db_store.create_trade(
+                strategy, symbol, qty, entry_date, entry_price,
+                notes=body.get("notes"), signal_meta=body.get("signal_meta"),
+            )
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"id": trade_id})
+
+    strategy = request.args.get("strategy") or None
+    try:
+        trades = db_store.list_trades(strategy)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(trades)
+
+
+def trades_close_endpoint():
+    body = request.get_json(silent=True) or {}
+    trade_id = body.get("trade_id")
+    exit_date = body.get("exit_date")
+    exit_price = body.get("exit_price")
+    if not trade_id or not exit_date or not exit_price:
+        return jsonify({"error": "trade_id, exit_date, exit_price are all required"}), 400
+    try:
+        db_store.close_trade(trade_id, exit_date, exit_price)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def trades_delete_endpoint():
+    body = request.get_json(silent=True) or {}
+    trade_id = body.get("trade_id")
+    if not trade_id:
+        return jsonify({"error": "trade_id is required"}), 400
+    try:
+        db_store.delete_trade(trade_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def trade_stats_endpoint():
+    strategy = request.args.get("strategy") or None
+    try:
+        stats = db_store.get_trade_stats(strategy)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(stats)
+
+
 _ROUTES = {
     "": home,
     "cost-basis": cost_basis_page,
     "atrx-stock": atrx_stock_page,
+    "performance-log": performance_log_page,
+    "performance-log-widget-js": performance_log_widget_js,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
@@ -312,6 +389,10 @@ _ROUTES = {
     "cost-basis-sync-status": cost_basis_sync_status_endpoint,
     "scan-candidates": scan_candidates_endpoint,
     "sync-nse-holidays": sync_nse_holidays_endpoint,
+    "trades": trades_endpoint,
+    "trades-close": trades_close_endpoint,
+    "trades-delete": trades_delete_endpoint,
+    "trade-stats": trade_stats_endpoint,
 }
 
 

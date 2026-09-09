@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Performance Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10131A;
+    --surface: #171B24;
+    --surface-alt: #1D2230;
+    --border: #262B38;
+    --text: #F7F8FA;
+    --text-dim: #B7BECE;
+    --accent: #E0A857;
+    --positive: #4CAF7D;
+    --negative: #E1615B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    min-height: 100vh;
+  }
+  .num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+  .sidebar {
+    flex: none; width: 200px; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 24px 0; display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); padding: 0 20px 18px; }
+  .nav-link { display: block; padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-dim); text-decoration: none; border-left: 3px solid transparent; }
+  .nav-link:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .nav-link.sub-link { padding-left: 34px; font-size: 12px; }
+  .main-content { flex: 1; min-width: 0; }
+
+  header { padding: 28px 32px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+
+  button { background: var(--accent); color: #10131A; border: none; border-radius: 4px; padding: 9px 16px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  #banner { margin: 16px 32px 0; padding: 10px 14px; border-radius: 4px; font-size: 13px; display: none; }
+  #banner.error { display: block; background: rgba(225,97,91,0.12); color: var(--negative); border: 1px solid var(--negative); }
+  #banner.ok { display: block; background: rgba(76,175,125,0.12); color: var(--positive); border: 1px solid var(--positive); }
+
+  .content { padding: 24px 32px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin: 28px 0 12px; }
+  .section-title:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: right; font-size: 11px; font-weight: 500; color: var(--text-dim); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: right; white-space: nowrap; }
+  tbody tr:hover { background: var(--surface-alt); }
+  td.symbol { font-weight: 600; text-align: left; }
+  .pos { color: var(--positive); }
+  .neg { color: var(--negative); }
+  .empty-state { color: var(--text-dim); font-size: 13px; padding: 16px 12px; }
+
+  .table-wrap { overflow-x: auto; }
+  .close-form { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+  .close-form input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 5px 7px; width: 100px;
+  }
+  .close-form input:focus { outline: none; border-color: var(--accent); }
+  .close-form button { padding: 5px 10px; font-size: 12px; }
+  .delete-btn { background: transparent; color: var(--negative); border: 1px solid var(--border); padding: 5px 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-title">ATRx</div>
+  <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
+  <a href="/cost-basis" class="nav-link">Cost Basis</a>
+  <a href="/performance-log" class="nav-link active">Performance Log</a>
+</nav>
+
+<div class="main-content">
+
+<header>
+  <h1>Performance Log</h1>
+  <button id="addTradeBtn">+ Add Trade</button>
+</header>
+
+<div id="banner"></div>
+
+<div class="content">
+  <div class="section-title">Stats by strategy</div>
+  <div class="table-wrap">
+    <table id="statsTable">
+      <thead>
+        <tr>
+          <th>Strategy</th><th>Trades</th><th>Win rate</th><th>Avg return%</th><th>Total P&amp;L</th><th>Open positions</th>
+        </tr>
+      </thead>
+      <tbody id="statsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Trades</div>
+  <div class="table-wrap">
+    <table id="tradesTable">
+      <thead>
+        <tr>
+          <th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Exit</th><th>% Return</th><th>P&amp;L</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="tradesBody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<script src="/performance-log-widget.js"></script>
+<script>
+function fmt(val, decimals) {
+  if (val === null || val === undefined) return "–";
+  return Number(val).toFixed(decimals);
+}
+
+function banner(kind, message) {
+  const el = document.getElementById("banner");
+  el.className = kind;
+  el.textContent = message;
+}
+
+function clearBanner() {
+  const el = document.getElementById("banner");
+  el.className = "";
+  el.textContent = "";
+}
+
+async function loadStats() {
+  const tbody = document.getElementById("statsBody");
+  try {
+    const res = await fetch("/api/trade-stats");
+    const stats = await res.json();
+    const strategies = Object.keys(stats).sort();
+    if (strategies.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No closed trades yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = strategies.map(s => {
+      const st = stats[s];
+      const winClass = st.win_rate_pct != null && st.win_rate_pct >= 50 ? "pos" : (st.win_rate_pct != null ? "neg" : "");
+      const pnlClass = st.total_pnl > 0 ? "pos" : (st.total_pnl < 0 ? "neg" : "");
+      return `
+        <tr>
+          <td>${s}</td>
+          <td class="num">${st.trades}</td>
+          <td class="num ${winClass}">${st.win_rate_pct != null ? fmt(st.win_rate_pct, 1) + "%" : "–"}</td>
+          <td class="num ${pnlClass}">${st.avg_return_pct != null ? fmt(st.avg_return_pct, 2) + "%" : "–"}</td>
+          <td class="num ${pnlClass}">${fmt(st.total_pnl, 2)}</td>
+          <td class="num">${st.open_count}</td>
+        </tr>
+      `;
+    }).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Could not load stats: ${e.message}</td></tr>`;
+  }
+}
+
+async function loadTrades() {
+  const tbody = document.getElementById("tradesBody");
+  try {
+    const res = await fetch("/api/trades");
+    const trades = await res.json();
+    if (trades.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No trades logged yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = trades.map(t => {
+      const isOpen = t.exit_price === null;
+      const retClass = t.pct_return == null ? "" : (t.pct_return >= 0 ? "pos" : "neg");
+      const exitCell = isOpen
+        ? `<td><div class="close-form">
+             <input type="date" id="exit-date-${t.id}">
+             <input type="number" step="0.01" placeholder="price" id="exit-price-${t.id}">
+             <button type="button" class="close-trade-btn" data-id="${t.id}">Close</button>
+           </div></td>`
+        : `<td class="num">${t.exit_date} @ ${fmt(t.exit_price, 2)}</td>`;
+      return `
+        <tr>
+          <td class="symbol">${t.symbol}</td>
+          <td>${t.strategy}</td>
+          <td class="num">${t.qty}</td>
+          <td class="num">${t.entry_date} @ ${fmt(t.entry_price, 2)}</td>
+          ${exitCell}
+          <td class="num ${retClass}">${t.pct_return != null ? fmt(t.pct_return, 2) + "%" : "–"}</td>
+          <td class="num ${retClass}">${t.pnl != null ? fmt(t.pnl, 2) : "–"}</td>
+          <td><button type="button" class="delete-btn delete-trade-btn" data-id="${t.id}">Delete</button></td>
+        </tr>
+      `;
+    }).join("");
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Could not load trades: ${e.message}</td></tr>`;
+  }
+}
+
+async function refresh() {
+  await Promise.all([loadStats(), loadTrades()]);
+}
+
+document.getElementById("addTradeBtn").addEventListener("click", () => {
+  PerformanceLog.open({ onSuccess: refresh });
+});
+
+document.getElementById("tradesBody").addEventListener("click", async (e) => {
+  const closeBtn = e.target.closest(".close-trade-btn");
+  const deleteBtn = e.target.closest(".delete-trade-btn");
+
+  if (closeBtn) {
+    const id = parseInt(closeBtn.dataset.id, 10);
+    const exitDate = document.getElementById(`exit-date-${id}`).value;
+    const exitPrice = parseFloat(document.getElementById(`exit-price-${id}`).value);
+    if (!exitDate || !exitPrice) {
+      banner("error", "Enter both exit date and exit price to close a trade.");
+      return;
+    }
+    closeBtn.disabled = true;
+    try {
+      const res = await fetch("/api/trades-close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trade_id: id, exit_date: exitDate, exit_price: exitPrice }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        banner("error", data.error || "Could not close trade.");
+        closeBtn.disabled = false;
+        return;
+      }
+      clearBanner();
+      refresh();
+    } catch (err) {
+      banner("error", "Request failed: " + err.message);
+      closeBtn.disabled = false;
+    }
+  }
+
+  if (deleteBtn) {
+    const id = parseInt(deleteBtn.dataset.id, 10);
+    deleteBtn.disabled = true;
+    try {
+      const res = await fetch("/api/trades-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trade_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        banner("error", data.error || "Could not delete trade.");
+        deleteBtn.disabled = false;
+        return;
+      }
+      clearBanner();
+      refresh();
+    } catch (err) {
+      banner("error", "Request failed: " + err.message);
+      deleteBtn.disabled = false;
+    }
+  }
+});
+
+refresh();
+PerformanceLog.init({ strategy: "atrx_screener" });
+</script>
+</body>
+</html>

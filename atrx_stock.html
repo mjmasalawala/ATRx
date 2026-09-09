@@ -246,6 +246,7 @@
   <a href="/" class="nav-link">ATRx Screener</a>
   <a href="/atrx-stock" class="nav-link sub-link active">ATRx Stock</a>
   <a href="/cost-basis" class="nav-link">Cost Basis</a>
+  <a href="/performance-log" class="nav-link">Performance Log</a>
 </nav>
 
 <div class="main-content">
@@ -302,6 +303,7 @@
   how volatile it is. This tool only screens -- it never places an order.
 </footer>
 
+<script src="/performance-log-widget.js"></script>
 <script>
 const CONFIG_GROUPS = [
   { label: "Volatility", fields: [
@@ -366,6 +368,7 @@ const LEVEL_COLUMNS = [
   { key: "hit_rate_5d_pct", label: "Hit% 5d" },
   { key: "avg_fwd_ret_5d_pct", label: "AvgRet% 5d" },
   { key: "score", label: "Score" },
+  { key: "action", label: "" },
 ];
 
 const STATUS_MESSAGES = {
@@ -374,6 +377,8 @@ const STATUS_MESSAGES = {
 };
 
 let DEFAULT_CONFIG = {};
+let LAST_GENERATED_AT = null;
+let CURRENT_BREAKDOWN = null;
 
 function fmt(val, decimals) {
   if (val === null || val === undefined) return "–";
@@ -480,9 +485,14 @@ function levelDetailHtml(symbol, levels) {
     return `<p class="detail-label" style="color:var(--text-dim);font-size:13px">No pivot clusters at all were found for ${symbol} in the lookback window.</p>`;
   }
   const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
-  const rows = levels.map(lvl => {
+  const rows = levels.map((lvl, lvlIdx) => {
     const rowClass = lvl.is_candidate ? "level-pass" : "level-fail";
     const cells = LEVEL_COLUMNS.map(c => {
+      if (c.key === "action") {
+        return lvl.is_candidate
+          ? `<td><button type="button" class="plw-trigger" data-symbol="${escapeHtml(symbol)}" data-level-idx="${lvlIdx}">Log Trade</button></td>`
+          : `<td></td>`;
+      }
       if (c.key === "meets_criteria" || c.key === "in_range") {
         const ok = lvl[c.key];
         return `<td class="${ok ? "pos" : "neg"}">${ok ? "yes" : "no"}</td>`;
@@ -517,6 +527,8 @@ function renderResult(data) {
   const wrap = document.getElementById("resultWrap");
   const empty = document.getElementById("empty");
   const breakdown = data.breakdown;
+  LAST_GENERATED_AT = data.generated_at;
+  CURRENT_BREAKDOWN = breakdown;
 
   if (breakdown.status !== "screened") {
     wrap.style.display = "none";
@@ -651,7 +663,21 @@ document.getElementById("tickerInput").addEventListener("keydown", (e) => {
   if (e.key === "Enter") runForTicker();
 });
 
+document.getElementById("resultWrap").addEventListener("click", (e) => {
+  const btn = e.target.closest(".plw-trigger");
+  if (!btn || !CURRENT_BREAKDOWN) return;
+  const lvlIdx = parseInt(btn.dataset.levelIdx, 10);
+  const lvl = CURRENT_BREAKDOWN.levels[lvlIdx];
+  if (!lvl) return;
+  PerformanceLog.open({
+    symbol: CURRENT_BREAKDOWN.symbol,
+    price: CURRENT_BREAKDOWN.current_price,
+    meta: { ...lvl, signal_date: LAST_GENERATED_AT },
+  });
+});
+
 checkStatus();
+PerformanceLog.init({ strategy: "atrx_screener" });
 </script>
 
 </div>

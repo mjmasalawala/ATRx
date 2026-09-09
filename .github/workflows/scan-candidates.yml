@@ -1,14 +1,32 @@
 name: Scan candidates and WhatsApp alert
 
-# Vercel Hobby cron can only fire once a day, so this every-15-min trigger
-# lives here instead. The cron below is intentionally a little wider than
-# the actual 8:50am-3:00pm IST window (3:20-9:30 UTC) -- GitHub Actions
+# Vercel Hobby cron can only fire once a day, so this every-25-min trigger
+# lives here instead. 25 doesn't evenly divide 60, so a single "*/25" cron
+# expression would fire at :00/:25/:50 each hour -- 25, 25, then only 10
+# minutes apart across the hour boundary. Instead, each entry below is an
+# explicit fire time, 25 minutes apart, starting from 8:50am IST (3:20 UTC)
+# and running a little past 3:00pm IST (9:30 UTC) -- GitHub Actions
 # schedules aren't guaranteed to fire exactly on time anyway, and
 # candidate_alert.run_candidate_scan() is the real, authoritative window +
 # NSE-holiday check; a firing outside the window is a harmless no-op.
 on:
   schedule:
-    - cron: "*/15 3-9 * * 1-5"
+    - cron: "20 3 * * 1-5"
+    - cron: "45 3 * * 1-5"
+    - cron: "10 4 * * 1-5"
+    - cron: "35 4 * * 1-5"
+    - cron: "0 5 * * 1-5"
+    - cron: "25 5 * * 1-5"
+    - cron: "50 5 * * 1-5"
+    - cron: "15 6 * * 1-5"
+    - cron: "40 6 * * 1-5"
+    - cron: "5 7 * * 1-5"
+    - cron: "30 7 * * 1-5"
+    - cron: "55 7 * * 1-5"
+    - cron: "20 8 * * 1-5"
+    - cron: "45 8 * * 1-5"
+    - cron: "10 9 * * 1-5"
+    - cron: "35 9 * * 1-5"
   workflow_dispatch: {}
 
 jobs:
@@ -29,7 +47,13 @@ jobs:
             exit 0
           fi
 
+          first=true
           for tier in $tiers; do
+            if [ "$first" = false ]; then
+              sleep 30
+            fi
+            first=false
+
             echo "Scanning tier: $tier"
             curl -sf -X POST \
               -H "Authorization: Bearer $CRON_SECRET" \

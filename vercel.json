@@ -8,6 +8,8 @@
     { "source": "/", "destination": "/api/index?r=" },
     { "source": "/cost-basis", "destination": "/api/index?r=cost-basis" },
     { "source": "/atrx-stock", "destination": "/api/index?r=atrx-stock" },
+    { "source": "/performance-log", "destination": "/api/index?r=performance-log" },
+    { "source": "/performance-log-widget.js", "destination": "/api/index?r=performance-log-widget-js" },
     { "source": "/api/login", "destination": "/api/index?r=login" },
     { "source": "/api/callback", "destination": "/api/index?r=callback" },
     { "source": "/api/status", "destination": "/api/index?r=status" },
@@ -20,7 +22,11 @@
     { "source": "/api/cost-basis-upload-trades", "destination": "/api/index?r=cost-basis-upload-trades" },
     { "source": "/api/cost-basis-sync-status", "destination": "/api/index?r=cost-basis-sync-status" },
     { "source": "/api/scan-candidates", "destination": "/api/index?r=scan-candidates" },
-    { "source": "/api/sync-nse-holidays", "destination": "/api/index?r=sync-nse-holidays" }
+    { "source": "/api/sync-nse-holidays", "destination": "/api/index?r=sync-nse-holidays" },
+    { "source": "/api/trades", "destination": "/api/index?r=trades" },
+    { "source": "/api/trades-close", "destination": "/api/index?r=trades-close" },
+    { "source": "/api/trades-delete", "destination": "/api/index?r=trades-delete" },
+    { "source": "/api/trade-stats", "destination": "/api/index?r=trade-stats" }
   ],
   "crons": [
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }

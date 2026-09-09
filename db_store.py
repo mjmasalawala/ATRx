@@ -35,6 +35,8 @@ SCREENER_ALERTS_SENT_TABLE = "screener_alerts_sent"
 
 INSTRUMENTS_TABLE = "instruments"
 
+PERFORMANCE_LOG_TABLE = "performance_log"
+
 
 def _connection_string() -> str:
     for name in _ENV_VAR_CANDIDATES:
@@ -309,3 +311,109 @@ def record_alerts_sent(alert_date, candidates: list[tuple[str, float]]) -> None:
                 [alert_date, symbol, level],
             )
         conn.commit()
+
+
+def create_trade(strategy: str, symbol: str, qty: int, entry_date, entry_price,
+                  notes: str | None = None, signal_meta: dict | None = None) -> int:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {PERFORMANCE_LOG_TABLE}
+                (strategy, symbol, qty, entry_date, entry_price, notes, signal_meta)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            [strategy, symbol, qty, entry_date, entry_price, notes,
+             Json(signal_meta) if signal_meta is not None else None],
+        )
+        trade_id = cur.fetchone()[0]
+        conn.commit()
+        return trade_id
+
+
+def close_trade(trade_id: int, exit_date, exit_price) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {PERFORMANCE_LOG_TABLE}
+            SET exit_date = %s, exit_price = %s, updated_at = now()
+            WHERE id = %s
+            """,
+            [exit_date, exit_price, trade_id],
+        )
+        conn.commit()
+
+
+def delete_trade(trade_id: int) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {PERFORMANCE_LOG_TABLE} WHERE id = %s", [trade_id])
+        conn.commit()
+
+
+def list_trades(strategy: str | None = None) -> list[dict]:
+    """Returns every logged trade, newest entry_date first. Each dict
+    includes pct_return/pnl computed here (never stored) when the trade
+    has been closed -- same principle as screener.py's score: always
+    derived from source values, not persisted redundantly."""
+    query = f"""
+        SELECT id, strategy, symbol, qty, entry_date, entry_price,
+               exit_date, exit_price, notes, signal_meta, created_at, updated_at
+        FROM {PERFORMANCE_LOG_TABLE}
+    """
+    params = []
+    if strategy:
+        query += " WHERE strategy = %s"
+        params.append(strategy)
+    query += " ORDER BY entry_date DESC, id DESC"
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+    trades = []
+    for r in rows:
+        (trade_id, strat, symbol, qty, entry_date, entry_price,
+         exit_date, exit_price, notes, signal_meta, created_at, updated_at) = r
+        entry_price = float(entry_price)
+        pct_return = pnl = None
+        if exit_price is not None:
+            exit_price = float(exit_price)
+            pct_return = round((exit_price - entry_price) / entry_price * 100, 2)
+            pnl = round((exit_price - entry_price) * qty, 2)
+        trades.append({
+            "id": trade_id, "strategy": strat, "symbol": symbol, "qty": qty,
+            "entry_date": entry_date.isoformat(), "entry_price": entry_price,
+            "exit_date": exit_date.isoformat() if exit_date else None,
+            "exit_price": exit_price, "notes": notes, "signal_meta": signal_meta,
+            "pct_return": pct_return, "pnl": pnl,
+            "created_at": created_at.isoformat(), "updated_at": updated_at.isoformat(),
+        })
+    return trades
+
+
+def get_trade_stats(strategy: str | None = None) -> dict:
+    """Built from list_trades() in Python, not SQL aggregation -- the
+    data volume here is tiny (a personal trade log, not a fills ledger).
+    Returns {strategy_name: {trades, wins, losses, win_rate_pct,
+    avg_return_pct, total_pnl, open_count}, ...}."""
+    trades = list_trades(strategy)
+    by_strategy: dict[str, list[dict]] = {}
+    for t in trades:
+        by_strategy.setdefault(t["strategy"], []).append(t)
+
+    stats = {}
+    for strat, strat_trades in by_strategy.items():
+        closed = [t for t in strat_trades if t["exit_price"] is not None]
+        open_count = len(strat_trades) - len(closed)
+        wins = [t for t in closed if t["pct_return"] > 0]
+        losses = [t for t in closed if t["pct_return"] <= 0]
+        stats[strat] = {
+            "trades": len(closed),
+            "wins": len(wins),
+            "losses": len(losses),
+            "win_rate_pct": round(len(wins) / len(closed) * 100, 1) if closed else None,
+            "avg_return_pct": round(sum(t["pct_return"] for t in closed) / len(closed), 2) if closed else None,
+            "total_pnl": round(sum(t["pnl"] for t in closed), 2) if closed else 0.0,
+            "open_count": open_count,
+        }
+    return stats
