@@ -132,8 +132,10 @@
 <header>
   <h1>Cost Basis</h1>
   <div style="text-align:right">
+    <button class="sync-btn" id="refresh-btn" title="Refresh data from server">&#8635; Refresh</button>
     <button class="sync-btn" id="sync-btn">Upload trades CSV</button>
     <input type="file" id="file-input" accept=".csv" style="display:none">
+    <div class="sync-status" id="last-refreshed" style="display:block"></div>
     <div class="sync-status" id="last-synced" style="display:block"></div>
   </div>
 </header>
@@ -164,9 +166,11 @@ const tableWrap = document.getElementById('table-wrap');
 const filterInput = document.getElementById('filter-input');
 const hideZeroCheckbox = document.getElementById('hide-zero-checkbox');
 const syncBtn = document.getElementById('sync-btn');
+const refreshBtn = document.getElementById('refresh-btn');
 const fileInput = document.getElementById('file-input');
 const syncStatus = document.getElementById('sync-status');
 const lastSyncedEl = document.getElementById('last-synced');
+const lastRefreshedEl = document.getElementById('last-refreshed');
 
 const COLUMNS = [
   { key: 'symbol', label: 'Ticker', type: 'string' },
@@ -210,24 +214,51 @@ function renderLastSynced(iso) {
   lastSyncedEl.textContent = `Last uploaded ${when.toLocaleString()}`;
 }
 
-async function loadLastSynced() {
+// The page shows whatever it last fetched until the user explicitly hits
+// Refresh -- a plain page visit (e.g. clicking the sidebar link) must not
+// trigger a server round-trip on its own.
+const CACHE_KEY = 'atrx_cost_basis_cache_v1';
+
+function saveCache(rows, lastSyncedAt) {
   try {
-    const res = await fetch('/api/cost-basis-sync-status');
-    const data = await res.json();
-    renderLastSynced(data.last_synced_at);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ rows, lastSyncedAt, cachedAt: Date.now() }));
+  } catch (e) { /* private browsing / storage full -- just skip caching */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch (e) {
-    lastSyncedEl.textContent = '';
+    return null;
   }
 }
 
-async function loadSummary() {
+function renderLastRefreshed(when) {
+  if (!when) { lastRefreshedEl.textContent = ''; return; }
+  lastRefreshedEl.textContent = `Updated ${new Date(when).toLocaleString()}`;
+}
+
+async function refreshAll() {
+  refreshBtn.disabled = true;
   try {
-    const res = await fetch('/api/cost-basis-summary');
-    rows = await res.json();
-    if (!Array.isArray(rows)) throw new Error(rows.error || 'Unexpected response');
+    const [summaryRes, statusRes] = await Promise.all([
+      fetch('/api/cost-basis-summary'),
+      fetch('/api/cost-basis-sync-status'),
+    ]);
+    const summary = await summaryRes.json();
+    const status = await statusRes.json();
+    if (!Array.isArray(summary)) throw new Error(summary.error || 'Unexpected response');
+
+    rows = summary;
     render();
+    renderLastSynced(status.last_synced_at);
+    saveCache(rows, status.last_synced_at);
+    renderLastRefreshed(Date.now());
   } catch (e) {
     tableWrap.innerHTML = `<div class="empty-state">Failed to load: ${e.message}</div>`;
+  } finally {
+    refreshBtn.disabled = false;
   }
 }
 
@@ -460,8 +491,7 @@ fileInput.addEventListener('change', async () => {
     syncStatus.className = 'sync-status banner' + (hadIssues ? ' warn' : ' ok');
     syncStatus.textContent = text;
     console.log('Trade upload result:', data);
-    renderLastSynced(data.synced_at);
-    await loadSummary();
+    await refreshAll();
   } catch (e) {
     syncStatus.className = 'sync-status banner error';
     syncStatus.textContent = `Upload failed: ${e.message}`;
@@ -471,8 +501,17 @@ fileInput.addEventListener('change', async () => {
   }
 });
 
-loadSummary();
-loadLastSynced();
+refreshBtn.addEventListener('click', refreshAll);
+
+const cached = loadCache();
+if (cached) {
+  rows = cached.rows;
+  render();
+  renderLastSynced(cached.lastSyncedAt);
+  renderLastRefreshed(cached.cachedAt);
+} else {
+  refreshAll();
+}
 </script>
 </body>
 </html>
