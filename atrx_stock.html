@@ -380,6 +380,28 @@ let DEFAULT_CONFIG = {};
 let LAST_GENERATED_AT = null;
 let CURRENT_BREAKDOWN = null;
 
+// A screener run is a live Kite call, so it only ever happens on an
+// explicit "Run" click -- it never auto-runs. But without caching,
+// navigating away and back throws the last result away too, forcing a
+// re-run just to look at it again. So the last result is persisted here
+// and restored on page load.
+const CACHE_KEY = "atrx_stock_cache_v1";
+
+function saveCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, cachedAt: Date.now() }));
+  } catch (e) { /* private browsing / storage full -- just skip caching */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function fmt(val, decimals) {
   if (val === null || val === undefined) return "–";
   return Number(val).toFixed(decimals);
@@ -523,12 +545,17 @@ function levelDetailHtml(symbol, levels) {
   `;
 }
 
-function renderResult(data) {
+function renderResult(data, { cached = false } = {}) {
+  const meta = document.getElementById("meta");
   const wrap = document.getElementById("resultWrap");
   const empty = document.getElementById("empty");
   const breakdown = data.breakdown;
   LAST_GENERATED_AT = data.generated_at;
   CURRENT_BREAKDOWN = breakdown;
+
+  meta.innerHTML =
+    (cached ? `<span class="num">Showing cached results</span> &middot; ` : "") +
+    `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span> for <span class="num">${escapeHtml(data.symbol)}</span>`;
 
   if (breakdown.status !== "screened") {
     wrap.style.display = "none";
@@ -618,7 +645,6 @@ document.getElementById("configGroups").addEventListener("input", (e) => {
 
 async function runForTicker() {
   const runBtn = document.getElementById("runBtn");
-  const meta = document.getElementById("meta");
   const wrap = document.getElementById("resultWrap");
   const empty = document.getElementById("empty");
   const symbol = document.getElementById("tickerInput").value.trim().toUpperCase();
@@ -648,8 +674,8 @@ async function runForTicker() {
       return;
     }
 
-    meta.innerHTML = `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span> for <span class="num">${escapeHtml(data.symbol)}</span>`;
     renderResult(data);
+    saveCache(data);
   } catch (e) {
     banner("error", "Request failed: " + e.message);
   } finally {
@@ -675,6 +701,12 @@ document.getElementById("resultWrap").addEventListener("click", (e) => {
     meta: { ...lvl, signal_date: LAST_GENERATED_AT },
   });
 });
+
+const cached = loadCache();
+if (cached) {
+  document.getElementById("tickerInput").value = cached.data.symbol;
+  renderResult(cached.data, { cached: true });
+}
 
 checkStatus();
 PerformanceLog.init({ strategy: "atrx_screener" });

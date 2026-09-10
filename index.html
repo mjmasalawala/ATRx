@@ -394,6 +394,28 @@ let LAST_GENERATED_AT = null;
 let DEFAULT_CONFIG = {};
 const expandedSymbols = new Set();
 
+// A screener run is expensive (live Kite calls across the whole universe),
+// so it only ever happens on an explicit "Run Screener" click -- it never
+// auto-runs. But without caching, navigating away and back throws the last
+// run's results away too, forcing a re-run just to look at them again. So
+// the last result set is persisted here and restored on page load.
+const CACHE_KEY = "atrx_screener_cache_v1";
+
+function saveCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, cachedAt: Date.now() }));
+  } catch (e) { /* private browsing / storage full -- just skip caching */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function fmt(val, decimals) {
   if (val === null || val === undefined) return "–";
   return Number(val).toFixed(decimals);
@@ -678,9 +700,38 @@ document.getElementById("configGroups").addEventListener("input", (e) => {
   if (e.target.matches("input[data-key]")) checkConfigWarnings();
 });
 
+function renderRunResult(data, { cached = false } = {}) {
+  const meta = document.getElementById("meta");
+  const table = document.getElementById("resultsTable");
+  const empty = document.getElementById("empty");
+
+  expandedSymbols.clear();
+  BREAKDOWN = data.screening_breakdown || [];
+  LAST_GENERATED_AT = data.generated_at;
+
+  meta.innerHTML =
+    (cached ? `<span class="num">Showing cached results</span> &middot; ` : "") +
+    `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
+    ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
+    ` &middot; <span class="num">${data.universe_size}</span> symbols scanned` +
+    ` &middot; <span class="num">${data.volatile_count}</span> passed the volatility filter` +
+    ` (ATR% &ge; <span class="num">${fmt(data.atr_threshold_pct, 2)}%</span>)` +
+    ` &middot; <span class="num">${data.candidate_count}</span> candidates` +
+    (data.csv_url ? ` &middot; <a href="${data.csv_url}" target="_blank" style="color:var(--accent)">CSV snapshot</a>` : "");
+
+  if (BREAKDOWN.length === 0) {
+    table.style.display = "none";
+    empty.style.display = "block";
+  } else {
+    empty.style.display = "none";
+    renderHeader();
+    renderRows();
+    table.style.display = "table";
+  }
+}
+
 document.getElementById("runBtn").addEventListener("click", async () => {
   const runBtn = document.getElementById("runBtn");
-  const meta = document.getElementById("meta");
   const table = document.getElementById("resultsTable");
   const empty = document.getElementById("empty");
 
@@ -689,7 +740,6 @@ document.getElementById("runBtn").addEventListener("click", async () => {
   clearBanner();
   empty.style.display = "none";
   table.style.display = "none";
-  expandedSymbols.clear();
 
   try {
     const overrides = collectConfigOverrides();
@@ -706,24 +756,8 @@ document.getElementById("runBtn").addEventListener("click", async () => {
       return;
     }
 
-    BREAKDOWN = data.screening_breakdown || [];
-    LAST_GENERATED_AT = data.generated_at;
-    meta.innerHTML =
-      `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
-      ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
-      ` &middot; <span class="num">${data.universe_size}</span> symbols scanned` +
-      ` &middot; <span class="num">${data.volatile_count}</span> passed the volatility filter` +
-      ` (ATR% &ge; <span class="num">${fmt(data.atr_threshold_pct, 2)}%</span>)` +
-      ` &middot; <span class="num">${data.candidate_count}</span> candidates` +
-      (data.csv_url ? ` &middot; <a href="${data.csv_url}" target="_blank" style="color:var(--accent)">CSV snapshot</a>` : "");
-
-    if (BREAKDOWN.length === 0) {
-      empty.style.display = "block";
-    } else {
-      renderHeader();
-      renderRows();
-      table.style.display = "table";
-    }
+    renderRunResult(data);
+    saveCache(data);
   } catch (e) {
     banner("error", "Request failed: " + e.message);
   } finally {
@@ -753,6 +787,9 @@ if (params.get("login") === "failed") {
   const reason = params.get("reason");
   banner("error", reason ? `Login failed: ${reason}` : "Login failed. Please try again.");
 }
+
+const cached = loadCache();
+if (cached) renderRunResult(cached.data, { cached: true });
 
 loadTiers();
 checkStatus();
