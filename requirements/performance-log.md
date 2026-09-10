@@ -28,7 +28,7 @@ INDEX performance_log_symbol_idx ON (symbol)
 
 `signal_meta` stores the *entire* level object from the moment "Log Trade" was clicked — `level`, `atr`, `atrx`, `touches`, `breaches`, `recency_weight`, `meets_criteria`, `in_range`, `is_candidate`, `rejection_reasons`, `backtest_touches`, `hit_rate_3d_pct`/`avg_fwd_ret_3d_pct`/`hit_rate_5d_pct`/`avg_fwd_ret_5d_pct`, `score`, `pivots` — **plus `signal_date`**, the screener run's `generated_at` at click time. `signal_date` is deliberately separate from `entry_date`: the latter is whatever the user manually enters (they may act on a signal a day or more later), so the gap between them is itself an analyzable quantity ("does entry lag hurt returns").
 
-`pct_return`/`pnl` are **never stored** — always computed at read time from `entry_price`/`exit_price`/`qty`, same principle as `screener.py`'s `score` field.
+`pct_return`/`pnl` are **never stored** — always computed at read time from `entry_price`/`exit_price`/`qty`, same principle as `screener.py`'s `score` field. `db_store.list_trades()` only computes these against `exit_price` (so both are `None` while a trade is open); `performance_log.html` additionally recomputes them client-side against the live current price for open trades (see below), so "unrealized" numbers are never persisted anywhere.
 
 ## `db_store.py` functions
 
@@ -48,8 +48,9 @@ INDEX performance_log_symbol_idx ON (symbol)
 - `trades_close_endpoint()` → `/api/trades-close`, `POST` (`trade_id`, `exit_date`, `exit_price`).
 - `trades_delete_endpoint()` → `/api/trades-delete`, `POST` (`trade_id`).
 - `trade_stats_endpoint()` → `/api/trade-stats`, `GET` (`?strategy=` optional).
+- `trade_quotes_endpoint()` → `/api/trade-quotes`, `GET` (`?symbols=` comma-separated). **Does** require a Kite login (401 if not logged in) since it calls `kite.ltp()` for live prices — unlike every other performance-log route. Returns `{symbol: last_price}`, silently omitting any symbol Kite didn't return a quote for. Used only for open positions' current price / unrealized P&L; closed trades never call this.
 
-No Kite-login gate on any of these — consistent with `/api/config`/`/api/universe-tiers` (this app has no separate identity/auth layer beyond the Kite session used for the screener's own data fetch).
+No Kite-login gate on the rest of these — consistent with `/api/config`/`/api/universe-tiers` (this app has no separate identity/auth layer beyond the Kite session used for the screener's own data fetch).
 
 ## `performance_log_widget.js` — the reusable "Log Trade" component
 
@@ -81,3 +82,10 @@ PerformanceLog.open({ symbol, price: <row's current_price>, meta: { ...lvl, sign
 ## `performance_log.html` — the standalone page
 
 Same self-contained shell/CSS pattern as the other three pages. "+ Add Trade" button opens a blank modal (`PerformanceLog.open({ onSuccess: refresh })`). Two tables, both re-fetched via `refresh()`: a per-strategy stats panel (`GET /api/trade-stats`) and the full trade list (`GET /api/trades`) — open positions get an inline exit-date/exit-price form + "Close" button (`POST /api/trades-close`) instead of a static exit column; every row has a "Delete" button (`POST /api/trades-delete`). Both tables re-fetch on any close/delete/add.
+
+Trades table columns: Symbol | Strategy | Qty | Entry (date + price) | Exit (date + price, or the close form) | Current price | Days open | % Return | P&L | Delete.
+
+- **Dates** render via `fmtDate()` as `DD-MMM-YY` (e.g. `25-Feb-25`) everywhere a date is shown — entry, exit. The API still returns plain ISO `YYYY-MM-DD`; this is purely a display transform.
+- **Current price**: `loadTrades()` collects the distinct symbols of every still-open trade and fetches them in one call to `GET /api/trade-quotes`; closed trades never hit this endpoint (they already have a final `exit_price`). Shows `–` if not logged in / the quote fetch fails / Kite didn't return a price for that symbol — never a stale or fabricated number.
+- **% Return / P&L**: for a closed trade, these are the server's `pct_return`/`pnl` (against `exit_price`). For an open trade, `loadTrades()` recomputes both client-side against the fetched current price (`(currentPrice - entry_price) / entry_price`, `(currentPrice - entry_price) * qty`) — i.e. unrealized P&L — and shows `–` if no current price is available yet.
+- **Days open**: `daysBetween(entry_date, exit_date)` for a closed trade; `daysBetween(entry_date, today)` for an open one (using the browser's local date, not `signal_date`). Shown as a plain integer day count.

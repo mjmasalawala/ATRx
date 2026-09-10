@@ -114,7 +114,7 @@
     <table id="tradesTable">
       <thead>
         <tr>
-          <th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Exit</th><th>% Return</th><th>P&amp;L</th><th></th>
+          <th>Symbol</th><th>Strategy</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Current price</th><th>Days open</th><th>% Return</th><th>P&amp;L</th><th></th>
         </tr>
       </thead>
       <tbody id="tradesBody"></tbody>
@@ -129,6 +129,31 @@
 function fmt(val, decimals) {
   if (val === null || val === undefined) return "–";
   return Number(val).toFixed(decimals);
+}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(dateStr) {
+  if (!dateStr) return "–";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return `${String(d).padStart(2, "0")}-${MONTHS[m - 1]}-${String(y).slice(2)}`;
+}
+
+function daysBetween(startStr, endStr) {
+  const start = new Date(startStr + "T00:00:00Z");
+  const end = new Date(endStr + "T00:00:00Z");
+  return Math.round((end - start) / 86400000);
+}
+
+async function fetchCurrentPrices(symbols) {
+  if (symbols.length === 0) return {};
+  try {
+    const res = await fetch("/api/trade-quotes?symbols=" + encodeURIComponent(symbols.join(",")));
+    const data = await res.json();
+    if (!res.ok) return {};
+    return data;
+  } catch (e) {
+    return {};
+  }
 }
 
 function banner(kind, message) {
@@ -179,34 +204,58 @@ async function loadTrades() {
     const res = await fetch("/api/trades");
     const trades = await res.json();
     if (trades.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No trades logged yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">No trades logged yet.</td></tr>`;
       return;
     }
+
+    const openSymbols = [...new Set(trades.filter(t => t.exit_price === null).map(t => t.symbol))];
+    const currentPrices = await fetchCurrentPrices(openSymbols);
+    const today = new Date().toISOString().slice(0, 10);
+
     tbody.innerHTML = trades.map(t => {
       const isOpen = t.exit_price === null;
-      const retClass = t.pct_return == null ? "" : (t.pct_return >= 0 ? "pos" : "neg");
+      const currentPrice = isOpen ? currentPrices[t.symbol] : null;
+
+      // Return/P&L are always derived, never stored: closed trades use
+      // exit_price (from the server), open trades use the live quote --
+      // falls back to "–" when no quote is available yet (not logged in,
+      // quote fetch failed) rather than a stale/wrong number.
+      let pctReturn = t.pct_return;
+      let pnl = t.pnl;
+      let daysOpen = null;
+      if (isOpen && currentPrice != null) {
+        pctReturn = (currentPrice - t.entry_price) / t.entry_price * 100;
+        pnl = (currentPrice - t.entry_price) * t.qty;
+        daysOpen = daysBetween(t.entry_date, today);
+      } else if (!isOpen) {
+        daysOpen = daysBetween(t.entry_date, t.exit_date);
+      }
+
+      const retClass = pctReturn == null ? "" : (pctReturn >= 0 ? "pos" : "neg");
       const exitCell = isOpen
         ? `<td><div class="close-form">
              <input type="date" id="exit-date-${t.id}">
              <input type="number" step="0.01" placeholder="price" id="exit-price-${t.id}">
              <button type="button" class="close-trade-btn" data-id="${t.id}">Close</button>
            </div></td>`
-        : `<td class="num">${t.exit_date} @ ${fmt(t.exit_price, 2)}</td>`;
+        : `<td class="num">${fmtDate(t.exit_date)} @ ${fmt(t.exit_price, 2)}</td>`;
       return `
         <tr>
           <td class="symbol">${t.symbol}</td>
           <td>${t.strategy}</td>
           <td class="num">${t.qty}</td>
-          <td class="num">${t.entry_date} @ ${fmt(t.entry_price, 2)}</td>
+          <td class="num">${fmtDate(t.entry_date)} @ ${fmt(t.entry_price, 2)}</td>
           ${exitCell}
-          <td class="num ${retClass}">${t.pct_return != null ? fmt(t.pct_return, 2) + "%" : "–"}</td>
-          <td class="num ${retClass}">${t.pnl != null ? fmt(t.pnl, 2) : "–"}</td>
+          <td class="num">${currentPrice != null ? fmt(currentPrice, 2) : "–"}</td>
+          <td class="num">${daysOpen != null ? daysOpen : "–"}</td>
+          <td class="num ${retClass}">${pctReturn != null ? fmt(pctReturn, 2) + "%" : "–"}</td>
+          <td class="num ${retClass}">${pnl != null ? fmt(pnl, 2) : "–"}</td>
           <td><button type="button" class="delete-btn delete-trade-btn" data-id="${t.id}">Delete</button></td>
         </tr>
       `;
     }).join("");
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Could not load trades: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Could not load trades: ${e.message}</td></tr>`;
   }
 }
 

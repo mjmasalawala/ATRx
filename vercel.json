@@ -26,7 +26,8 @@
     { "source": "/api/trades", "destination": "/api/index?r=trades" },
     { "source": "/api/trades-close", "destination": "/api/index?r=trades-close" },
     { "source": "/api/trades-delete", "destination": "/api/index?r=trades-delete" },
-    { "source": "/api/trade-stats", "destination": "/api/index?r=trade-stats" }
+    { "source": "/api/trade-stats", "destination": "/api/index?r=trade-stats" },
+    { "source": "/api/trade-quotes", "destination": "/api/index?r=trade-quotes" }
   ],
   "crons": [
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }

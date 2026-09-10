@@ -370,6 +370,34 @@ def trade_stats_endpoint():
     return jsonify(stats)
 
 
+def trade_quotes_endpoint():
+    """Live LTP for open positions -- Performance Log shows current price
+    and marks unrealized P&L/return against it, but never stores it (same
+    always-derived principle as pct_return/pnl in db_store.list_trades)."""
+    symbols = sorted({s.strip().upper() for s in (request.args.get("symbols") or "").split(",") if s.strip()})
+    if not symbols:
+        return jsonify({})
+
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return jsonify({"error": f"Token store not configured: {e}"}), 500
+    if not token:
+        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
+
+    keys = [f"{CONFIG.exchange}:{s}" for s in symbols]
+    try:
+        kite = get_kite_session_from_token(token)
+        quotes = kite.ltp(keys)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        sym: quotes[key]["last_price"]
+        for sym, key in zip(symbols, keys) if key in quotes
+    })
+
+
 _ROUTES = {
     "": home,
     "cost-basis": cost_basis_page,
@@ -393,6 +421,7 @@ _ROUTES = {
     "trades-close": trades_close_endpoint,
     "trades-delete": trades_delete_endpoint,
     "trade-stats": trade_stats_endpoint,
+    "trade-quotes": trade_quotes_endpoint,
 }
 
 
