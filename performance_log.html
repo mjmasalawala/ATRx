@@ -91,7 +91,11 @@
 
 <header>
   <h1>Performance Log</h1>
-  <button id="addTradeBtn">+ Add Trade</button>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <span id="lastUpdated" style="font-size:12px; color:var(--text-dim);"></span>
+    <button type="button" id="refreshBtn" class="secondary" title="Refresh data from server">&#8635; Refresh</button>
+    <button id="addTradeBtn">+ Add Trade</button>
+  </div>
 </header>
 
 <div id="banner"></div>
@@ -168,51 +172,68 @@ function clearBanner() {
   el.textContent = "";
 }
 
-async function loadStats() {
-  const tbody = document.getElementById("statsBody");
+// The page shows whatever it last fetched until the user explicitly hits
+// Refresh -- a plain page visit (e.g. clicking the sidebar link) must not
+// trigger a server round-trip (and a Kite quote call) on its own.
+const CACHE_KEY = "plw_cache_v1";
+
+function saveCache(stats, trades, currentPrices) {
   try {
-    const res = await fetch("/api/trade-stats");
-    const stats = await res.json();
-    const strategies = Object.keys(stats).sort();
-    if (strategies.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No closed trades yet.</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = strategies.map(s => {
-      const st = stats[s];
-      const winClass = st.win_rate_pct != null && st.win_rate_pct >= 50 ? "pos" : (st.win_rate_pct != null ? "neg" : "");
-      const pnlClass = st.total_pnl > 0 ? "pos" : (st.total_pnl < 0 ? "neg" : "");
-      return `
-        <tr>
-          <td>${s}</td>
-          <td class="num">${st.trades}</td>
-          <td class="num ${winClass}">${st.win_rate_pct != null ? fmt(st.win_rate_pct, 1) + "%" : "–"}</td>
-          <td class="num ${pnlClass}">${st.avg_return_pct != null ? fmt(st.avg_return_pct, 2) + "%" : "–"}</td>
-          <td class="num ${pnlClass}">${fmt(st.total_pnl, 2)}</td>
-          <td class="num">${st.open_count}</td>
-        </tr>
-      `;
-    }).join("");
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ stats, trades, currentPrices, cachedAt: Date.now() }));
+  } catch (e) { /* private browsing / storage full -- just skip caching */ }
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Could not load stats: ${e.message}</td></tr>`;
+    return null;
   }
 }
 
-async function loadTrades() {
+function showLastUpdated(when) {
+  const el = document.getElementById("lastUpdated");
+  if (!when) { el.textContent = ""; return; }
+  const d = new Date(when);
+  el.textContent = "Updated " + d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "2-digit" }) +
+    " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderStats(stats) {
+  const tbody = document.getElementById("statsBody");
+  const strategies = Object.keys(stats).sort();
+  if (strategies.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No closed trades yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = strategies.map(s => {
+    const st = stats[s];
+    const winClass = st.win_rate_pct != null && st.win_rate_pct >= 50 ? "pos" : (st.win_rate_pct != null ? "neg" : "");
+    const pnlClass = st.total_pnl > 0 ? "pos" : (st.total_pnl < 0 ? "neg" : "");
+    return `
+      <tr>
+        <td>${s}</td>
+        <td class="num">${st.trades}</td>
+        <td class="num ${winClass}">${st.win_rate_pct != null ? fmt(st.win_rate_pct, 1) + "%" : "–"}</td>
+        <td class="num ${pnlClass}">${st.avg_return_pct != null ? fmt(st.avg_return_pct, 2) + "%" : "–"}</td>
+        <td class="num ${pnlClass}">${fmt(st.total_pnl, 2)}</td>
+        <td class="num">${st.open_count}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderTrades(trades, currentPrices) {
   const tbody = document.getElementById("tradesBody");
-  try {
-    const res = await fetch("/api/trades");
-    const trades = await res.json();
-    if (trades.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">No trades logged yet.</td></tr>`;
-      return;
-    }
+  if (trades.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">No trades logged yet.</td></tr>`;
+    return;
+  }
 
-    const openSymbols = [...new Set(trades.filter(t => t.exit_price === null).map(t => t.symbol))];
-    const currentPrices = await fetchCurrentPrices(openSymbols);
-    const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
 
-    tbody.innerHTML = trades.map(t => {
+  tbody.innerHTML = trades.map(t => {
       const isOpen = t.exit_price === null;
       const currentPrice = isOpen ? currentPrices[t.symbol] : null;
 
@@ -254,14 +275,43 @@ async function loadTrades() {
         </tr>
       `;
     }).join("");
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Could not load trades: ${e.message}</td></tr>`;
-  }
 }
 
 async function refresh() {
-  await Promise.all([loadStats(), loadTrades()]);
+  const refreshBtn = document.getElementById("refreshBtn");
+  refreshBtn.disabled = true;
+  try {
+    const [statsRes, tradesRes] = await Promise.all([
+      fetch("/api/trade-stats"),
+      fetch("/api/trades"),
+    ]);
+    const stats = await statsRes.json();
+    const trades = await tradesRes.json();
+    if (!statsRes.ok) throw new Error(stats.error || "Could not load stats.");
+    if (!tradesRes.ok) throw new Error(trades.error || "Could not load trades.");
+
+    const openSymbols = [...new Set(trades.filter(t => t.exit_price === null).map(t => t.symbol))];
+    const currentPrices = await fetchCurrentPrices(openSymbols);
+
+    renderStats(stats);
+    renderTrades(trades, currentPrices);
+    saveCache(stats, trades, currentPrices);
+    showLastUpdated(Date.now());
+    clearBanner();
+  } catch (e) {
+    banner("error", "Could not refresh: " + e.message);
+  } finally {
+    refreshBtn.disabled = false;
+  }
 }
+
+function renderFromCache(cache) {
+  renderStats(cache.stats);
+  renderTrades(cache.trades, cache.currentPrices);
+  showLastUpdated(cache.cachedAt);
+}
+
+document.getElementById("refreshBtn").addEventListener("click", refresh);
 
 document.getElementById("addTradeBtn").addEventListener("click", () => {
   PerformanceLog.open({ onSuccess: refresh });
@@ -324,7 +374,12 @@ document.getElementById("tradesBody").addEventListener("click", async (e) => {
   }
 });
 
-refresh();
+const cached = loadCache();
+if (cached) {
+  renderFromCache(cached);
+} else {
+  refresh();
+}
 PerformanceLog.init({ strategy: "atrx_screener" });
 </script>
 </body>
