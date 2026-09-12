@@ -37,6 +37,10 @@ INSTRUMENTS_TABLE = "instruments"
 
 PERFORMANCE_LOG_TABLE = "performance_log"
 
+BREAKOUT_CONFIG_TABLE = "breakout_config"
+BREAKOUT_SIGNAL_EVENTS_TABLE = "breakout_signal_events"
+_BREAKOUT_HORIZONS = (3, 5, 10, 20)  # must match breakout_config.BreakoutConfig.forward_horizons
+
 
 def _connection_string() -> str:
     for name in _ENV_VAR_CANDIDATES:
@@ -417,3 +421,101 @@ def get_trade_stats(strategy: str | None = None) -> dict:
             "open_count": open_count,
         }
     return stats
+
+
+def load_breakout_config() -> dict | None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT params FROM {BREAKOUT_CONFIG_TABLE} WHERE id = 1")
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def save_breakout_config(params: dict) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {BREAKOUT_CONFIG_TABLE} (id, params, updated_at)
+            VALUES (1, %s, now())
+            ON CONFLICT (id) DO UPDATE SET params = EXCLUDED.params, updated_at = now()
+            """,
+            [Json(params)],
+        )
+        conn.commit()
+
+
+def upsert_signal_events(rows: list[dict]) -> int:
+    """
+    Batch upsert of breakout signal events, keyed on (symbol, signal_date,
+    signal_config_hash). Each `row` dict needs: symbol, signal_date,
+    signal_config_hash, universe_tier, entry_price, window_gain_pct,
+    up_periods, n_blocks, block_values (list), filter_reasons (list), and
+    fwd_ret_<h>/control_ret_<h> for each horizon in _BREAKOUT_HORIZONS
+    (any of these may be None if that horizon hasn't elapsed yet).
+
+    A full overwrite on conflict (not a null-coalescing merge) is correct
+    here, not just simpler: historical prices don't change between runs,
+    so re-computing the same (symbol, date, hash) later only ever adds
+    previously-unavailable forward-return values, never contradicts one
+    already stored.
+    """
+    if not rows:
+        return 0
+
+    horizon_cols = []
+    for h in _BREAKOUT_HORIZONS:
+        horizon_cols += [f"fwd_ret_{h}d", f"control_ret_{h}d"]
+
+    cols = (
+        "symbol", "signal_date", "signal_config_hash", "universe_tier",
+        "entry_price", "window_gain_pct", "up_periods", "n_blocks",
+        "block_values", "filter_reasons", *horizon_cols,
+    )
+    placeholders = ", ".join(["%s"] * len(cols))
+    update_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("symbol", "signal_date", "signal_config_hash"))
+
+    with get_conn() as conn, conn.cursor() as cur:
+        for row in rows:
+            values = [
+                row["symbol"], row["signal_date"], row["signal_config_hash"], row["universe_tier"],
+                row["entry_price"], row.get("window_gain_pct"), row["up_periods"], row["n_blocks"],
+                Json(row.get("block_values") or []), Json(row.get("filter_reasons") or []),
+            ]
+            for h in _BREAKOUT_HORIZONS:
+                values.append(row.get(f"fwd_ret_{h}d"))
+                values.append(row.get(f"control_ret_{h}d"))
+            cur.execute(
+                f"""
+                INSERT INTO {BREAKOUT_SIGNAL_EVENTS_TABLE} ({", ".join(cols)}, updated_at)
+                VALUES ({placeholders}, now())
+                ON CONFLICT (symbol, signal_date, signal_config_hash)
+                DO UPDATE SET {update_clause}, updated_at = now()
+                """,
+                values,
+            )
+        conn.commit()
+    return len(rows)
+
+
+def load_signal_events(signal_config_hash: str, universe_tier: str | None = None) -> list[dict]:
+    """All persisted events for a given signal definition (across however
+    many runs/tiers contributed to it), newest signal_date first."""
+    horizon_cols = []
+    for h in _BREAKOUT_HORIZONS:
+        horizon_cols += [f"fwd_ret_{h}d", f"control_ret_{h}d"]
+    cols = (
+        "symbol", "signal_date", "universe_tier", "entry_price", "window_gain_pct",
+        "up_periods", "n_blocks", "block_values", "filter_reasons", *horizon_cols,
+    )
+    where = "signal_config_hash = %s"
+    params = [signal_config_hash]
+    if universe_tier:
+        where += " AND universe_tier = %s"
+        params.append(universe_tier)
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {', '.join(cols)} FROM {BREAKOUT_SIGNAL_EVENTS_TABLE} "
+            f"WHERE {where} ORDER BY signal_date DESC",
+            params,
+        )
+        return [dict(zip(cols, r)) for r in cur.fetchall()]

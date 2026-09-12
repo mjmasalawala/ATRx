@@ -11,5 +11,8 @@ dependencies = [
     "psycopg[binary]>=3.1,<4",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
 [tool.vercel]
 entrypoint = "api.index:app"

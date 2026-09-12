@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Breakout Screener</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #10131A;
+    --surface: #171B24;
+    --surface-alt: #1D2230;
+    --border: #262B38;
+    --text: #F7F8FA;
+    --text-dim: #B7BECE;
+    --accent: #E0A857;
+    --positive: #4CAF7D;
+    --negative: #E1615B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    min-height: 100vh;
+  }
+  .num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+  .sidebar {
+    flex: none; width: 200px; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 24px 0; display: flex; flex-direction: column; gap: 2px;
+  }
+  .sidebar-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); padding: 0 20px 18px; }
+  .nav-link { display: block; padding: 10px 20px; font-size: 13px; font-weight: 500; color: var(--text-dim); text-decoration: none; border-left: 3px solid transparent; }
+  .nav-link:hover { background: var(--surface-alt); color: var(--text); }
+  .nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-alt); }
+  .nav-link.sub-link { padding-left: 34px; font-size: 12px; }
+  .main-content { flex: 1; min-width: 0; }
+
+  header { padding: 28px 32px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+  header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  header .meta { color: var(--text-dim); font-size: 13px; }
+  header .meta .num { color: var(--text); }
+
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button { background: var(--accent); color: #10131A; border: none; border-radius: 4px; padding: 9px 16px; font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  #loginStatus { font-size: 13px; color: var(--text-dim); }
+  #loginStatus.ok { color: var(--positive); }
+
+  #banner { margin: 16px 32px 0; padding: 10px 14px; border-radius: 4px; font-size: 13px; display: none; }
+  #banner.error { display: block; background: rgba(225,97,91,0.12); color: var(--negative); border: 1px solid var(--negative); }
+  #banner.info { display: block; background: rgba(224,168,87,0.12); color: var(--accent); border: 1px solid var(--accent); }
+
+  #configSection { margin: 24px 32px 0; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; display: none; }
+  #configSection.visible { display: block; }
+  .config-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+  .config-header:hover .config-toggle { color: var(--accent); }
+  #configSection.collapsed .config-header { margin-bottom: 0; }
+  #configSection h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  #configSection .sub { color: var(--text-dim); font-size: 12px; margin: 0 0 16px; }
+  .config-toggle { background: none; border: none; color: var(--text-dim); font-size: 12px; font-family: 'Space Grotesk', sans-serif; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; flex: none; }
+  .config-toggle .chevron { display: inline-block; transition: transform 0.15s ease; font-size: 10px; }
+  #configSection.collapsed .config-toggle .chevron { transform: rotate(-90deg); }
+  #configSection.collapsed #configBody { display: none; }
+  .config-group { margin-bottom: 14px; }
+  .config-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin: 0 0 8px; }
+  .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
+  .config-field { display: flex; flex-direction: column; gap: 5px; }
+  .config-field .label-row { display: flex; align-items: center; gap: 5px; }
+  .config-field label { font-size: 11.5px; color: var(--text-dim); }
+  .tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--text-dim); color: var(--text-dim); font-size: 9.5px; line-height: 1; cursor: help; flex: none; }
+  .tip:hover, .tip:focus { border-color: var(--accent); color: var(--accent); outline: none; }
+  .tip::after {
+    content: attr(data-tip); position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    width: 220px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px;
+    padding: 8px 10px; font-size: 11.5px; line-height: 1.45; font-family: 'Space Grotesk', sans-serif;
+    white-space: normal; text-align: left; box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    opacity: 0; visibility: hidden; transition: opacity 0.1s ease; z-index: 20; pointer-events: none;
+  }
+  .tip:hover::after, .tip:focus::after { opacity: 1; visibility: visible; }
+  .config-field input, .config-field select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 7px 9px; width: 100%;
+  }
+  .config-field input:focus, .config-field select:focus { outline: none; border-color: var(--accent); }
+  .config-field.checkbox-field { flex-direction: row; align-items: center; gap: 8px; }
+  .config-field.checkbox-field input { width: auto; }
+  .config-warning { display: flex; gap: 8px; align-items: flex-start; margin-top: 14px; padding: 9px 12px; background: rgba(224,168,87,0.1); border: 1px solid var(--accent); border-radius: 5px; color: var(--accent); font-size: 12px; line-height: 1.5; }
+  .config-warning + .config-warning { margin-top: 8px; }
+  .config-footer { display: flex; align-items: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  #resetConfigBtn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  .derived-note { color: var(--text-dim); font-size: 12px; }
+  .derived-note .num { color: var(--accent); }
+
+  .verdict-card { margin: 24px 32px 0; padding: 18px 22px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); }
+  .verdict-card.edge { border-color: var(--positive); background: rgba(76,175,125,0.07); }
+  .verdict-card.no_edge { border-color: var(--negative); background: rgba(225,97,91,0.05); }
+  .verdict-card h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+  .verdict-card p { margin: 0; font-size: 14px; line-height: 1.55; }
+  .verdict-card .refresh-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .verdict-card .refresh-row .num { color: var(--text-dim); font-size: 12px; }
+
+  .horizon-table-wrap { margin-top: 12px; overflow-x: auto; }
+  table.horizon-table { width: 100%; border-collapse: collapse; }
+  table.horizon-table th { text-align: right; font-size: 11px; font-weight: 500; color: var(--text-dim); padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.horizon-table th:first-child, table.horizon-table td:first-child { text-align: left; }
+  table.horizon-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 12.5px; text-align: right; white-space: nowrap; font-family: 'IBM Plex Mono', monospace; }
+
+  .table-wrap { overflow-x: auto; padding: 24px 32px 40px; }
+  table { width: 100%; border-collapse: collapse; min-width: 1080px; }
+  th { text-align: right; font-size: 11px; font-weight: 500; color: var(--text-dim); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; user-select: none; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: right; white-space: nowrap; }
+  tbody tr.result-row:hover { background: var(--surface-alt); }
+  tr.row-dim { color: var(--text-dim); }
+  td.symbol { font-weight: 600; text-align: left; }
+  td.symbol.clickable { cursor: pointer; }
+  td.symbol .toggle { display: inline-block; width: 14px; color: var(--text-dim); font-size: 10px; }
+  .pos { color: var(--positive); }
+  .neg { color: var(--negative); }
+
+  tr.detail-row td { padding: 0; border-bottom: 1px solid var(--border); }
+  .detail-wrap { padding: 10px 12px 16px 34px; background: var(--surface); }
+  .detail-wrap .detail-label { font-size: 11px; color: var(--text-dim); margin: 0 0 8px; }
+  table.detail-table { width: auto; min-width: 760px; margin: 0 0 12px; white-space: normal; }
+  table.detail-table th { font-size: 10px; padding: 6px 10px; white-space: nowrap; }
+  table.detail-table td { font-size: 12px; padding: 6px 10px; }
+  td.level-note { text-align: left; font-size: 11px; color: var(--text-dim); padding: 4px 10px 8px; white-space: normal; }
+  td.level-note.reason-note { color: var(--negative); }
+  .block-chain { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .block-chain .block-val { padding: 3px 7px; border-radius: 4px; background: var(--surface-alt); border: 1px solid var(--border); }
+  .block-chain .block-val.up { border-color: var(--positive); color: var(--positive); }
+  .block-chain .arrow { color: var(--text-dim); font-size: 11px; }
+
+  .tier-field { display: flex; flex-direction: column; gap: 5px; }
+  .tier-field label { font-size: 11px; color: var(--text-dim); }
+  .tier-field select { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; padding: 7px 9px; cursor: pointer; min-width: 200px; }
+  .tier-field select:focus { outline: none; border-color: var(--accent); }
+
+  #empty { color: var(--text-dim); font-size: 13px; padding: 0 32px; }
+  footer { padding: 20px 32px 32px; color: var(--text-dim); font-size: 12px; line-height: 1.6; max-width: 760px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-title">ATRx</div>
+  <a href="/" class="nav-link">ATRx Screener</a>
+  <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
+  <a href="/breakout" class="nav-link active">Breakout Screener</a>
+  <a href="/cost-basis" class="nav-link">Cost Basis</a>
+  <a href="/performance-log" class="nav-link">Performance Log</a>
+</nav>
+
+<div class="main-content">
+
+<header>
+  <div>
+    <h1>Breakout Screener</h1>
+    <div class="meta" id="meta">Not run yet.</div>
+  </div>
+  <div class="actions">
+    <div class="tier-field">
+      <label for="tierSelect">Universe</label>
+      <select id="tierSelect"></select>
+    </div>
+    <span id="loginStatus">checking login…</span>
+    <button id="loginBtn" class="secondary">Log in with Zerodha</button>
+  </div>
+</header>
+
+<div id="banner"></div>
+
+<div id="configSection">
+  <div class="config-header" id="configHeader">
+    <div>
+      <h2>Breakout configuration</h2>
+      <p class="sub">Finds stocks whose price has risen in a "staircase" over consecutive N-day blocks. Review or adjust, then run -- values here apply to this run only.</p>
+    </div>
+    <button class="config-toggle" id="configToggleBtn" type="button"><span class="chevron">▾</span> <span id="configToggleLabel">Hide</span></button>
+  </div>
+  <div id="configBody">
+    <div id="configGroups"></div>
+    <div id="derivedNote" class="derived-note"></div>
+    <div id="configWarnings"></div>
+    <div class="config-footer">
+      <button id="runBtn">Run Breakout Screener</button>
+      <button id="resetConfigBtn" type="button">Reset to defaults</button>
+    </div>
+  </div>
+</div>
+
+<div id="verdictCard" class="verdict-card" style="display:none">
+  <h3>Cumulative evidence for this signal definition</h3>
+  <p id="verdictText"></p>
+  <div id="horizonTableWrap" class="horizon-table-wrap"></div>
+  <div class="refresh-row">
+    <button id="refreshStatsBtn" class="secondary">&#8635; Refresh</button>
+    <span class="num" id="statsUpdatedAt"></span>
+  </div>
+</div>
+
+<div id="empty" style="display:none">The universe is empty -- run the screener on a universe tier to see results.</div>
+
+<div class="table-wrap">
+  <table id="resultsTable" style="display:none">
+    <thead><tr id="headerRow"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<footer>
+  This tool only screens and ranks -- it never places an order. A "signal"
+  means the staircase pattern held over the configured lookback; it is not
+  a prediction. The cumulative evidence card is built from every signal
+  ever recorded for the exact signal definition shown above (period/blocks/
+  tolerance/block value) -- changing a filter doesn't reset it, changing
+  the signal definition itself starts a fresh track record. Review the
+  sample size (n) before trusting any hit rate or excess return shown here.
+</footer>
+
+<script src="/performance-log-widget.js"></script>
+<script>
+const CONFIG_GROUPS = [
+  { label: "Staircase signal", fields: [
+    { key: "period_days", label: "Block size (days)", type: "number", step: 1,
+      tip: "Trading days per block. The staircase compares one block's value to the previous block's -- smaller blocks react faster, larger blocks smooth out noise." },
+    { key: "n_blocks", label: "Number of blocks", type: "number", step: 1,
+      tip: "How many consecutive blocks make up the lookback window. Lookback = block size &times; this. More blocks = a longer, harder-to-satisfy staircase." },
+    { key: "min_up_periods", label: "Min up periods", type: "number", step: 1,
+      tip: "Of the (blocks - 1) block-to-block comparisons, how many must be 'up' for the signal to fire. Equal to (blocks - 1) means every single comparison must be up; one less tolerates a single down block." },
+    { key: "block_value", label: "Block value", type: "select", options: [
+        ["min_close", "Lowest close (rising lows)"],
+        ["last_close", "Last close (momentum)"],
+        ["max_close", "Highest close"],
+        ["mean_close", "Average close"],
+      ],
+      tip: "How each block reduces to one number for comparison. 'Lowest close' reads as a rising-lows uptrend structure and tolerates end-of-block dips. 'Last close' is closer to raw momentum and reacts to every closing day." },
+  ]},
+  { label: "Data & scan", fields: [
+    { key: "history_trading_days", label: "History fetched (days)", type: "number", step: 1,
+      tip: "Trading days of daily history fetched per symbol from Kite. Must comfortably exceed the derived lookback plus your longest forward horizon, or the in-window backtest has nothing to measure against." },
+    { key: "signal_recent_days", label: "Candidate window (days)", type: "number", step: 1,
+      tip: "A symbol is flagged a live candidate if the staircase fired on any of the most recent N trading days, not only strictly today." },
+  ]},
+  { label: "Tradability filters", fields: [
+    { key: "min_avg_turnover_cr", label: "Min avg turnover (₹cr)", type: "number", step: 0.5,
+      tip: "Average daily traded value over the signal window must be at least this many crores, so the candidate is actually liquid enough to fill." },
+    { key: "min_price", label: "Min price (₹)", type: "number", step: 1,
+      tip: "Excludes low-priced/penny names below this price." },
+    { key: "max_circuit_days", label: "Max circuit-like days", type: "number", step: 1,
+      tip: "Days in the window where the close equals the high and the move looks like a circuit-band lock are suspicious -- a stock can't be reliably bought if it's frequently locked. Caps how many such days are tolerated." },
+  ]},
+  { label: "Quality filters", fields: [
+    { key: "min_window_gain_pct", label: "Min window gain (%)", type: "number", step: 1,
+      tip: "Total close-to-close gain across the whole lookback window must be at least this much, or the 'staircase' is just noise." },
+    { key: "max_window_gain_pct", label: "Max window gain (%)", type: "number", step: 1,
+      tip: "...and at most this much -- a much larger move looks parabolic/exhaustion-prone rather than a clean, sustainable staircase." },
+    { key: "require_breakout_confirm", label: "Require new high", type: "checkbox",
+      tip: "If checked, also requires the signal day's close to be a new high over the trailing 'breakout high days' window -- turns this into a strict breakout confirmation rather than just a rising-structure pattern." },
+    { key: "breakout_high_days", label: "Breakout high window (days)", type: "number", step: 1,
+      tip: "Only used when 'Require new high' is checked -- how far back to look for the prior high the signal day's close must exceed." },
+  ]},
+];
+
+const BREAKDOWN_COLUMNS = [
+  { key: "symbol", label: "Symbol" },
+  { key: "current_price", label: "Price" },
+  { key: "up_periods", label: "Up periods" },
+  { key: "structural_stop", label: "Structural stop" },
+  { key: "distance_to_stop_pct", label: "Dist to stop" },
+  { key: "n_historical_signals", label: "Hist. signals" },
+  { key: "status", label: "Status" },
+];
+
+const STATUS_LABELS = {
+  candidate: "candidate",
+  filtered_out: "filtered out",
+  signal_in_window: "fired, outside candidate window",
+  no_signal: "no signal",
+  insufficient_data: "insufficient data",
+  fetch_failed: "history fetch failed",
+  symbol_not_found: "not found on exchange",
+};
+
+let BREAKDOWN = [];
+let LAST_GENERATED_AT = null;
+let LAST_SIGNAL_HASH = null;
+let LAST_UNIVERSE_TIER = null;
+let DEFAULT_CONFIG = {};
+const expandedSymbols = new Set();
+
+// A breakout run fetches live Kite history across a whole universe tier,
+// so (same pattern as the ATRx Screener and every other ATRx page) it only
+// ever runs on an explicit button click -- never automatically just from
+// visiting the page. The last result is cached client-side and restored on
+// load; the cumulative-evidence card has its own separate Refresh button
+// since it reflects everything stored in Neon, not just this run.
+const CACHE_KEY = "atrx_breakout_cache_v1";
+const STATS_CACHE_KEY = "atrx_breakout_stats_cache_v1";
+
+function saveCache(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ data, cachedAt: Date.now() })); }
+  catch (e) { /* private browsing / storage full -- just skip caching */ }
+}
+function loadCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function fmt(val, decimals) {
+  if (val === null || val === undefined) return "–";
+  return Number(val).toFixed(decimals);
+}
+function fmtPct(val, decimals) {
+  if (val === null || val === undefined) return "–";
+  const n = Number(val);
+  return `<span class="${n >= 0 ? "pos" : "neg"}">${n >= 0 ? "+" : ""}${n.toFixed(decimals)}%</span>`;
+}
+
+function banner(kind, message) {
+  const el = document.getElementById("banner");
+  el.className = kind;
+  el.textContent = message;
+}
+function clearBanner() {
+  const el = document.getElementById("banner");
+  el.className = "";
+  el.textContent = "";
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+const INT_KEYS = ["period_days", "n_blocks", "min_up_periods", "history_trading_days",
+  "signal_recent_days", "max_circuit_days", "breakout_high_days"];
+
+function renderConfigForm(values) {
+  const container = document.getElementById("configGroups");
+  container.innerHTML = "";
+  CONFIG_GROUPS.forEach(group => {
+    const groupEl = document.createElement("div");
+    groupEl.className = "config-group";
+    const label = document.createElement("div");
+    label.className = "config-group-label";
+    label.textContent = group.label;
+    groupEl.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "config-grid";
+    group.fields.forEach(f => {
+      const field = document.createElement("div");
+      let control;
+      if (f.type === "select") {
+        control = `<select id="cfg_${f.key}" data-key="${f.key}">` +
+          f.options.map(([val, lbl]) => `<option value="${val}">${escapeHtml(lbl)}</option>`).join("") +
+          `</select>`;
+      } else if (f.type === "checkbox") {
+        control = `<input id="cfg_${f.key}" type="checkbox" data-key="${f.key}">`;
+        field.className = "config-field checkbox-field";
+      } else {
+        control = `<input id="cfg_${f.key}" type="number" step="${f.step}" data-key="${f.key}">`;
+      }
+      if (!field.className) field.className = "config-field";
+      field.innerHTML = `
+        <div class="label-row">
+          <label for="cfg_${f.key}">${f.label}</label>
+          <span class="tip" tabindex="0" data-tip="${escapeHtml(f.tip || "")}">?</span>
+        </div>
+        ${control}
+      `;
+      grid.appendChild(field);
+    });
+    groupEl.appendChild(grid);
+    container.appendChild(groupEl);
+  });
+  applyConfigValues(values);
+}
+
+function applyConfigValues(values) {
+  Object.keys(values).forEach(key => {
+    const input = document.getElementById(`cfg_${key}`);
+    if (!input) return;
+    if (input.type === "checkbox") input.checked = !!values[key];
+    else input.value = values[key];
+  });
+  checkConfigWarnings();
+}
+
+function collectConfigOverrides() {
+  const overrides = {};
+  document.querySelectorAll("#configGroups [data-key]").forEach(input => {
+    const key = input.dataset.key;
+    if (input.type === "checkbox") {
+      overrides[key] = input.checked;
+    } else if (input.tagName === "SELECT") {
+      overrides[key] = input.value;
+    } else {
+      const val = INT_KEYS.includes(key) ? parseInt(input.value, 10) : parseFloat(input.value);
+      if (!isNaN(val)) overrides[key] = val;
+    }
+  });
+  return overrides;
+}
+
+function checkConfigWarnings() {
+  const container = document.getElementById("configWarnings");
+  const derivedNote = document.getElementById("derivedNote");
+  if (!container) return;
+  const warnings = [];
+
+  const periodInput = document.getElementById("cfg_period_days");
+  const blocksInput = document.getElementById("cfg_n_blocks");
+  const historyInput = document.getElementById("cfg_history_trading_days");
+  const period = periodInput ? parseInt(periodInput.value, 10) : NaN;
+  const blocks = blocksInput ? parseInt(blocksInput.value, 10) : NaN;
+  const history = historyInput ? parseInt(historyInput.value, 10) : NaN;
+
+  if (!isNaN(period) && !isNaN(blocks)) {
+    const lookback = period * blocks;
+    derivedNote.innerHTML = `Derived lookback: <span class="num">${lookback}</span> trading days (block size &times; number of blocks).`;
+    const longestHorizon = 20; // matches breakout_config.BreakoutConfig.forward_horizons default
+    if (!isNaN(history) && history < lookback + longestHorizon) {
+      warnings.push(
+        `History fetched (${history}d) barely covers the derived lookback (${lookback}d) plus a 20-day ` +
+        `forward-return check. Historical signals near the start of the fetch window won't have room for ` +
+        `their forward return to be measured. Consider raising "History fetched" comfortably above ${lookback + longestHorizon}.`
+      );
+    }
+  }
+
+  const minGainInput = document.getElementById("cfg_min_window_gain_pct");
+  const maxGainInput = document.getElementById("cfg_max_window_gain_pct");
+  if (minGainInput && maxGainInput) {
+    const minGain = parseFloat(minGainInput.value);
+    const maxGain = parseFloat(maxGainInput.value);
+    if (!isNaN(minGain) && !isNaN(maxGain) && minGain >= maxGain) {
+      warnings.push(`Min window gain (${minGain}%) is not below max window gain (${maxGain}%) -- no signal can pass both filters.`);
+    }
+  }
+
+  container.innerHTML = warnings.map(w => `<div class="config-warning">${w}</div>`).join("");
+}
+
+function renderHeader() {
+  const row = document.getElementById("headerRow");
+  row.innerHTML = BREAKDOWN_COLUMNS.map(c => `<th>${c.label}</th>`).join("") + "<th></th>";
+}
+
+function blockChainHtml(blockValues, requiredUp) {
+  if (!blockValues || !blockValues.length) return "–";
+  const parts = [];
+  blockValues.forEach((v, i) => {
+    const up = i > 0 && v > blockValues[i - 1];
+    if (i > 0) parts.push(`<span class="arrow">${up ? "&#8599;" : "&#8600;"}</span>`);
+    parts.push(`<span class="block-val ${up ? "up" : ""}">${fmt(v, 2)}</span>`);
+  });
+  return `<div class="block-chain">${parts.join("")}</div>`;
+}
+
+function eventsTableHtml(symbol, events) {
+  if (!events || !events.length) {
+    return `<p class="detail-label">No historical signals found for this symbol in the fetched window.</p>`;
+  }
+  const rows = events.map((e, idx) => {
+    const passed = !e.filter_reasons || e.filter_reasons.length === 0;
+    const logBtn = passed
+      ? `<button type="button" class="plw-trigger" data-symbol="${escapeHtml(symbol)}" data-event-idx="${idx}">Log Trade</button>`
+      : "";
+    return `
+      <tr class="${passed ? "" : "row-dim"}">
+        <td class="symbol">${e.signal_date}</td>
+        <td class="num">${fmt(e.entry_price, 2)}</td>
+        <td class="num">${e.up_periods}/${e.n_blocks - 1}</td>
+        <td class="num">${e.window_gain_pct != null ? fmt(e.window_gain_pct, 1) + "%" : "–"}</td>
+        <td class="num">${fmtPct(e.fwd_ret_3d, 2)}</td>
+        <td class="num">${fmtPct(e.fwd_ret_5d, 2)}</td>
+        <td class="num">${fmtPct(e.fwd_ret_10d, 2)}</td>
+        <td class="num">${fmtPct(e.fwd_ret_20d, 2)}</td>
+        <td>${passed ? "yes" : "no"}</td>
+        <td>${logBtn}</td>
+      </tr>
+      ${!passed ? `<tr><td class="level-note reason-note" colspan="10">${escapeHtml(e.filter_reasons.join("; "))}</td></tr>` : ""}
+    `;
+  }).join("");
+  return `
+    <table class="detail-table">
+      <thead><tr>
+        <th>Signal date</th><th>Entry</th><th>Up periods</th><th>Window gain</th>
+        <th>Fwd 3d</th><th>Fwd 5d</th><th>Fwd 10d</th><th>Fwd 20d</th><th>Passed filters</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function detailHtml(b) {
+  return `
+    <div class="detail-wrap">
+      <p class="detail-label">Latest block breakdown (${b.up_periods ?? "–"} of ${(b.block_values || []).length - 1} comparisons up):</p>
+      ${blockChainHtml(b.block_values, b.required_up_periods)}
+      <p class="detail-label" style="margin-top:14px">Historical signals found in the fetched window:</p>
+      ${eventsTableHtml(b.symbol, b.events)}
+    </div>
+  `;
+}
+
+function renderRows() {
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+  BREAKDOWN.forEach(b => {
+    const isOpen = expandedSymbols.has(b.symbol);
+    const statusClass = b.status === "candidate" ? "pos" : (b.status === "filtered_out" ? "neg" : "");
+    const isExpandable = (b.n_historical_signals || 0) > 0 || (b.block_values || []).length > 0;
+    const distClass = b.distance_to_stop_pct != null && b.distance_to_stop_pct < 0 ? "neg" : "pos";
+
+    const tr = document.createElement("tr");
+    tr.className = `result-row ${b.status === "filtered_out" || b.status === "no_signal" ? "row-dim" : ""}`;
+    tr.innerHTML = `
+      <td class="symbol ${isExpandable ? "clickable" : ""}">
+        ${isExpandable ? `<span class="toggle">${isOpen ? "▾" : "▸"}</span>` : ""}${escapeHtml(b.symbol)}
+      </td>
+      <td class="num">${b.current_price != null ? fmt(b.current_price, 2) : "–"}</td>
+      <td class="num">${b.up_periods != null ? `${b.up_periods}/${b.required_up_periods}` : "–"}</td>
+      <td class="num">${b.structural_stop != null ? fmt(b.structural_stop, 2) : "–"}</td>
+      <td class="num ${b.distance_to_stop_pct != null ? distClass : ""}">${b.distance_to_stop_pct != null ? fmt(b.distance_to_stop_pct, 1) + "%" : "–"}</td>
+      <td class="num">${b.n_historical_signals ?? "–"}</td>
+      <td class="${statusClass}">${STATUS_LABELS[b.status] || b.status}</td>
+    `;
+    if (isExpandable) {
+      tr.querySelector(".symbol").addEventListener("click", () => {
+        if (expandedSymbols.has(b.symbol)) expandedSymbols.delete(b.symbol);
+        else expandedSymbols.add(b.symbol);
+        renderRows();
+      });
+    }
+    tbody.appendChild(tr);
+
+    if (isOpen) {
+      const detailTr = document.createElement("tr");
+      detailTr.className = "detail-row";
+      detailTr.innerHTML = `<td colspan="${BREAKDOWN_COLUMNS.length + 1}">${detailHtml(b)}</td>`;
+      tbody.appendChild(detailTr);
+    }
+  });
+}
+
+async function checkStatus() {
+  const loginStatusEl = document.getElementById("loginStatus");
+  const loginBtn = document.getElementById("loginBtn");
+  const configSection = document.getElementById("configSection");
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    if (data.logged_in) {
+      loginStatusEl.textContent = "logged in";
+      loginStatusEl.className = "ok";
+      loginBtn.textContent = "Re-login";
+      configSection.classList.add("visible");
+      loadConfig();
+    } else {
+      loginStatusEl.textContent = "not logged in";
+      loginStatusEl.className = "";
+      loginBtn.textContent = "Log in with Zerodha";
+      configSection.classList.remove("visible");
+    }
+  } catch {
+    loginStatusEl.textContent = "status unavailable";
+  }
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch("/api/breakout-config");
+    const data = await res.json();
+    DEFAULT_CONFIG = data;
+    renderConfigForm(data);
+  } catch (e) {
+    banner("error", "Could not load breakout configuration: " + e.message);
+  }
+}
+
+const TIER_LABELS = { large_cap: "Large Cap", mid_cap: "Mid Cap", small_cap: "Small Cap" };
+
+async function loadTiers() {
+  const select = document.getElementById("tierSelect");
+  try {
+    const res = await fetch("/api/universe-tiers");
+    const tiers = await res.json();
+    select.innerHTML = tiers.map(t => {
+      const label = TIER_LABELS[t.tier] || t.tier;
+      const count = t.symbol_count != null ? ` (${t.symbol_count})` : "";
+      return `<option value="${escapeHtml(t.tier)}" title="${escapeHtml(t.note || "")}">${escapeHtml(label)}${count}</option>`;
+    }).join("");
+  } catch (e) {
+    select.innerHTML = `<option value="large_cap">Large Cap</option>`;
+  }
+}
+
+document.getElementById("loginBtn").addEventListener("click", () => {
+  window.location.href = "/api/login";
+});
+document.getElementById("resetConfigBtn").addEventListener("click", () => {
+  applyConfigValues(DEFAULT_CONFIG);
+});
+
+const CONFIG_COLLAPSE_KEY = "atrx_breakout_config_collapsed";
+function setConfigCollapsed(collapsed) {
+  document.getElementById("configSection").classList.toggle("collapsed", collapsed);
+  document.getElementById("configToggleLabel").textContent = collapsed ? "Show" : "Hide";
+  localStorage.setItem(CONFIG_COLLAPSE_KEY, collapsed ? "1" : "0");
+}
+document.getElementById("configHeader").addEventListener("click", () => {
+  setConfigCollapsed(!document.getElementById("configSection").classList.contains("collapsed"));
+});
+try { setConfigCollapsed(localStorage.getItem(CONFIG_COLLAPSE_KEY) === "1"); } catch {}
+
+document.getElementById("configGroups").addEventListener("input", (e) => {
+  if (e.target.matches("[data-key]")) checkConfigWarnings();
+});
+
+function renderVerdict(stats, { cached = false } = {}) {
+  const card = document.getElementById("verdictCard");
+  const text = document.getElementById("verdictText");
+  const wrap = document.getElementById("horizonTableWrap");
+  const updatedAt = document.getElementById("statsUpdatedAt");
+
+  card.style.display = "block";
+  card.className = `verdict-card ${stats.verdict_tag || ""}`;
+  text.textContent = stats.verdict_text || "";
+  updatedAt.textContent = cached ? "showing cached evidence" : `updated ${new Date().toLocaleString()}`;
+
+  const horizons = Object.values(stats.by_horizon || {});
+  if (!horizons.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `
+    <table class="horizon-table">
+      <thead><tr><th>Horizon</th><th>n</th><th>Hit rate</th><th>Avg fwd ret</th><th>Avg control ret</th><th>Avg excess</th><th>95% CI (excess)</th></tr></thead>
+      <tbody>
+        ${horizons.map(h => `
+          <tr>
+            <td>${h.horizon}d</td>
+            <td>${h.n}</td>
+            <td>${h.hit_rate_pct != null ? h.hit_rate_pct + "%" : "–"}</td>
+            <td>${fmtPct(h.avg_fwd_ret_pct, 2)}</td>
+            <td>${fmtPct(h.avg_control_ret_pct, 2)}</td>
+            <td>${fmtPct(h.avg_excess_ret_pct, 2)}</td>
+            <td>${h.excess_ci ? `${h.excess_ci[0]}% to ${h.excess_ci[1]}%` : "–"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function fetchStats(signalHash, tier) {
+  const res = await fetch(`/api/breakout-stats?hash=${encodeURIComponent(signalHash)}&tier=${encodeURIComponent(tier)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Could not load cumulative stats.");
+  return data;
+}
+
+document.getElementById("refreshStatsBtn").addEventListener("click", async () => {
+  if (!LAST_SIGNAL_HASH) return;
+  const btn = document.getElementById("refreshStatsBtn");
+  btn.disabled = true;
+  try {
+    const stats = await fetchStats(LAST_SIGNAL_HASH, LAST_UNIVERSE_TIER);
+    renderVerdict(stats);
+    saveCache(STATS_CACHE_KEY, stats);
+  } catch (e) {
+    banner("error", "Could not refresh cumulative evidence: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderRunResult(data, { cached = false } = {}) {
+  const meta = document.getElementById("meta");
+  const table = document.getElementById("resultsTable");
+  const empty = document.getElementById("empty");
+
+  expandedSymbols.clear();
+  BREAKDOWN = data.breakdown || [];
+  LAST_GENERATED_AT = data.generated_at;
+  LAST_SIGNAL_HASH = data.signal_config_hash;
+  LAST_UNIVERSE_TIER = data.universe_tier;
+
+  const candidateCount = BREAKDOWN.filter(b => b.status === "candidate").length;
+
+  meta.innerHTML =
+    (cached ? `<span class="num">Showing cached results</span> &middot; ` : "") +
+    `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span>` +
+    ` &middot; <span class="num">${TIER_LABELS[data.universe_tier] || data.universe_tier}</span> universe` +
+    ` &middot; <span class="num">${data.fetched_count}</span>/<span class="num">${data.universe_size}</span> symbols fetched` +
+    ` &middot; <span class="num">${data.n_events_this_run}</span> historical signals found this run` +
+    ` &middot; <span class="num">${candidateCount}</span> live candidates` +
+    (data.persist_error ? ` &middot; <span style="color:var(--negative)">could not save evidence: ${escapeHtml(data.persist_error)}</span>` : "");
+
+  if (BREAKDOWN.length === 0) {
+    table.style.display = "none";
+    empty.style.display = "block";
+  } else {
+    empty.style.display = "none";
+    renderHeader();
+    renderRows();
+    table.style.display = "table";
+  }
+}
+
+document.getElementById("runBtn").addEventListener("click", async () => {
+  const runBtn = document.getElementById("runBtn");
+  const table = document.getElementById("resultsTable");
+  const empty = document.getElementById("empty");
+
+  runBtn.disabled = true;
+  runBtn.textContent = "Running…";
+  clearBanner();
+  empty.style.display = "none";
+  table.style.display = "none";
+
+  try {
+    const overrides = collectConfigOverrides();
+    const universe_tier = document.getElementById("tierSelect").value || "large_cap";
+    const res = await fetch("/api/run-breakout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ overrides, universe_tier }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      banner("error", data.error || "Breakout screener run failed.");
+      return;
+    }
+
+    renderRunResult(data);
+    saveCache(CACHE_KEY, data);
+
+    try {
+      const stats = await fetchStats(data.signal_config_hash, data.universe_tier);
+      renderVerdict(stats);
+      saveCache(STATS_CACHE_KEY, stats);
+    } catch (e) {
+      banner("error", "Run succeeded, but could not load cumulative evidence: " + e.message);
+    }
+  } catch (e) {
+    banner("error", "Request failed: " + e.message);
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = "Run Breakout Screener";
+  }
+});
+
+document.getElementById("tbody").addEventListener("click", (e) => {
+  const btn = e.target.closest(".plw-trigger");
+  if (!btn) return;
+  const symbol = btn.dataset.symbol;
+  const eventIdx = parseInt(btn.dataset.eventIdx, 10);
+  const b = BREAKDOWN.find(row => row.symbol === symbol);
+  const ev = b && b.events && b.events[eventIdx];
+  if (!b || !ev) return;
+  PerformanceLog.open({
+    symbol,
+    price: ev.entry_price,
+    meta: { ...ev, signal_date: ev.signal_date, structural_stop: b.structural_stop },
+  });
+});
+
+const params = new URLSearchParams(window.location.search);
+if (params.get("login") === "success") banner("info", "Logged in with Zerodha.");
+if (params.get("login") === "failed") {
+  const reason = params.get("reason");
+  banner("error", reason ? `Login failed: ${reason}` : "Login failed. Please try again.");
+}
+
+const cachedRun = loadCache(CACHE_KEY);
+if (cachedRun) renderRunResult(cachedRun.data, { cached: true });
+const cachedStats = loadCache(STATS_CACHE_KEY);
+if (cachedStats) renderVerdict(cachedStats.data, { cached: true });
+
+loadTiers();
+checkStatus();
+PerformanceLog.init({ strategy: "breakout_staircase" });
+</script>
+
+</div>
+</body>
+</html>

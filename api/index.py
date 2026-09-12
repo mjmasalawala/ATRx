@@ -25,6 +25,9 @@ import db_store
 import nse_holidays_sync
 import trade_csv_import
 from blob_store import upload_csv
+from breakout_config import config_from_dict
+from breakout_screener import run_breakout_screener
+from breakout_stats import summarize as summarize_breakout_events
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
@@ -38,6 +41,7 @@ _COST_BASIS_HTML_PATH = Path(__file__).resolve().parent.parent / "cost_basis.htm
 _ATRX_STOCK_HTML_PATH = Path(__file__).resolve().parent.parent / "atrx_stock.html"
 _PERFORMANCE_LOG_HTML_PATH = Path(__file__).resolve().parent.parent / "performance_log.html"
 _PERFORMANCE_LOG_WIDGET_JS_PATH = Path(__file__).resolve().parent.parent / "performance_log_widget.js"
+_BREAKOUT_HTML_PATH = Path(__file__).resolve().parent.parent / "breakout.html"
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
@@ -71,6 +75,10 @@ def performance_log_widget_js():
         _PERFORMANCE_LOG_WIDGET_JS_PATH, "performance_log_widget.js not found",
         mimetype="application/javascript",
     )
+
+
+def breakout_page():
+    return _serve_file(_BREAKOUT_HTML_PATH, "breakout.html not found")
 
 
 def login():
@@ -196,6 +204,72 @@ def run_screener_symbol_endpoint():
         }), 500
 
     return jsonify(result)
+
+
+def breakout_config_endpoint():
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        try:
+            cfg = config_from_dict(body)
+        except Exception as e:
+            return jsonify({"error": f"Invalid config: {e}"}), 400
+        try:
+            db_store.save_breakout_config(cfg.to_tunable_dict())
+        except Exception as e:
+            return jsonify({"error": f"Could not save config: {e}"}), 500
+        return jsonify(cfg.to_tunable_dict())
+
+    try:
+        persisted = db_store.load_breakout_config()
+    except Exception:
+        persisted = None
+    from breakout_config import CONFIG as _DEFAULT_BREAKOUT_CONFIG
+    return jsonify(persisted or _DEFAULT_BREAKOUT_CONFIG.to_tunable_dict())
+
+
+def run_breakout_endpoint():
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return jsonify({"error": f"Token store not configured: {e}"}), 500
+
+    if not token:
+        return jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401
+
+    body = request.get_json(silent=True) or {}
+    overrides = body.get("overrides") or None
+    universe_tier = body.get("universe_tier") or "large_cap"
+
+    try:
+        kite = get_kite_session_from_token(token)
+        result = run_breakout_screener(kite, overrides=overrides, universe_tier=universe_tier)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Unexpected {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
+
+    return jsonify(result)
+
+
+def breakout_stats_endpoint():
+    signal_config_hash = request.args.get("hash")
+    if not signal_config_hash:
+        return jsonify({"error": "hash is required (a run's signal_config_hash)"}), 400
+    universe_tier = request.args.get("tier") or None
+
+    try:
+        events = db_store.load_signal_events(signal_config_hash, universe_tier)
+    except Exception as e:
+        return jsonify({"error": f"Could not load signal events: {e}"}), 500
+
+    summary = summarize_breakout_events(events)
+    summary["signal_config_hash"] = signal_config_hash
+    summary["universe_tier"] = universe_tier
+    return jsonify(summary)
 
 
 def _store_csv_snapshot(rows: list[dict]):
@@ -404,6 +478,7 @@ _ROUTES = {
     "atrx-stock": atrx_stock_page,
     "performance-log": performance_log_page,
     "performance-log-widget-js": performance_log_widget_js,
+    "breakout": breakout_page,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
@@ -422,6 +497,9 @@ _ROUTES = {
     "trades-delete": trades_delete_endpoint,
     "trade-stats": trade_stats_endpoint,
     "trade-quotes": trade_quotes_endpoint,
+    "breakout-config": breakout_config_endpoint,
+    "run-breakout": run_breakout_endpoint,
+    "breakout-stats": breakout_stats_endpoint,
 }
 
 

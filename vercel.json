@@ -10,6 +10,7 @@
     { "source": "/atrx-stock", "destination": "/api/index?r=atrx-stock" },
     { "source": "/performance-log", "destination": "/api/index?r=performance-log" },
     { "source": "/performance-log-widget.js", "destination": "/api/index?r=performance-log-widget-js" },
+    { "source": "/breakout", "destination": "/api/index?r=breakout" },
     { "source": "/api/login", "destination": "/api/index?r=login" },
     { "source": "/api/callback", "destination": "/api/index?r=callback" },
     { "source": "/api/status", "destination": "/api/index?r=status" },
@@ -27,7 +28,10 @@
     { "source": "/api/trades-close", "destination": "/api/index?r=trades-close" },
     { "source": "/api/trades-delete", "destination": "/api/index?r=trades-delete" },
     { "source": "/api/trade-stats", "destination": "/api/index?r=trade-stats" },
-    { "source": "/api/trade-quotes", "destination": "/api/index?r=trade-quotes" }
+    { "source": "/api/trade-quotes", "destination": "/api/index?r=trade-quotes" },
+    { "source": "/api/breakout-config", "destination": "/api/index?r=breakout-config" },
+    { "source": "/api/run-breakout", "destination": "/api/index?r=run-breakout" },
+    { "source": "/api/breakout-stats", "destination": "/api/index?r=breakout-stats" }
   ],
   "crons": [
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }
