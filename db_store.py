@@ -147,17 +147,22 @@ def upsert_trades(rows: list[dict]) -> int:
 
 
 
-# Trades sharing an exact trade_time (common when a CSV row only has a bare
-# trade_date, no order_execution_time, so several same-day fills all land
-# on the same midnight timestamp) need a deterministic tiebreak -- without
-# one, Postgres returns ties in an arbitrary order, and a same-day SELL
-# landing before its matching BUY makes cost_basis.replay() see an oversell
-# against zero held shares. Processing BUYs before SELLs within a tie
-# doesn't change same-day P&L under the average-cost method (unlike FIFO,
-# order within a day doesn't matter for the blended average), so it's a
-# safe way to break the tie; trade_id is the final tiebreak for same-side
-# same-timestamp ties (e.g. a single order filled in several tranches).
-_TRADE_ORDER_BY = "trade_time ASC, (side = 'SELL') ASC, trade_id ASC"
+# Trades are grouped by calendar day first, with every BUY on a day
+# replayed before that day's SELLs, regardless of intraday order --
+# without this, a same-day SELL whose order_execution_time happens to be
+# earlier than that day's BUY (a real pattern in Zerodha's export: e.g. an
+# existing lot sold in the morning and a fresh lot bought in the afternoon
+# gets logged with the sell's timestamp first) makes cost_basis.replay()
+# see an oversell against zero held shares, even though the day's net
+# activity was never actually short. Processing BUYs before SELLs within a
+# day doesn't change that day's P&L under the average-cost method (unlike
+# FIFO, order within a day doesn't matter for the blended average), so
+# reordering within a day is safe -- reordering *across* days would not be
+# (a later day's BUY can't cover an earlier day's SELL). trade_time is the
+# next tiebreak (for same-side same-day trades, actual execution order is
+# still meaningful), trade_id the final one (e.g. a single order filled in
+# several tranches at the same timestamp).
+_TRADE_ORDER_BY = "trade_time::date ASC, (side = 'SELL') ASC, trade_time ASC, trade_id ASC"
 
 
 def load_symbol_trades(symbol: str) -> list[dict]:
