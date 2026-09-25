@@ -42,6 +42,7 @@ _ATRX_STOCK_HTML_PATH = Path(__file__).resolve().parent.parent / "atrx_stock.htm
 _PERFORMANCE_LOG_HTML_PATH = Path(__file__).resolve().parent.parent / "performance_log.html"
 _PERFORMANCE_LOG_WIDGET_JS_PATH = Path(__file__).resolve().parent.parent / "performance_log_widget.js"
 _BREAKOUT_HTML_PATH = Path(__file__).resolve().parent.parent / "breakout.html"
+_FIND_ATRX_OPPS_HTML_PATH = Path(__file__).resolve().parent.parent / "find_atrx_opps.html"
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
@@ -79,6 +80,10 @@ def performance_log_widget_js():
 
 def breakout_page():
     return _serve_file(_BREAKOUT_HTML_PATH, "breakout.html not found")
+
+
+def find_atrx_opps_page():
+    return _serve_file(_FIND_ATRX_OPPS_HTML_PATH, "find_atrx_opps.html not found")
 
 
 def login():
@@ -479,6 +484,7 @@ _ROUTES = {
     "performance-log": performance_log_page,
     "performance-log-widget-js": performance_log_widget_js,
     "breakout": breakout_page,
+    "find-atrx-opps": find_atrx_opps_page,
     "login": login,
     "callback": callback,
     "status": status_endpoint,

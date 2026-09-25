@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ATRx Stock</title>
+<title>Find ATRx Opps</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -65,6 +65,7 @@
   header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
   header .meta { color: var(--text-dim); font-size: 13px; }
   header .meta .num { color: var(--text); }
+  header .sub { color: var(--text-dim); font-size: 12px; margin: 4px 0 0; max-width: 560px; }
 
   .actions { display: flex; align-items: center; gap: 10px; }
   button {
@@ -93,27 +94,8 @@
   #banner.error { display: block; background: rgba(225,97,91,0.12); color: var(--negative); border: 1px solid var(--negative); }
   #banner.info { display: block; background: rgba(224,168,87,0.12); color: var(--accent); border: 1px solid var(--accent); }
 
-  #tickerSection {
-    margin: 24px 32px 0;
-    padding: 18px 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    display: none;
-  }
-  #tickerSection.visible { display: block; }
-  .ticker-row { display: flex; align-items: flex-end; gap: 12px; }
-  .ticker-field { display: flex; flex-direction: column; gap: 5px; }
-  .ticker-field label { font-size: 11.5px; color: var(--text-dim); }
-  .ticker-field input {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-    color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 14px;
-    padding: 9px 11px; width: 180px; text-transform: uppercase;
-  }
-  .ticker-field input:focus { outline: none; border-color: var(--accent); }
-
   #configSection {
-    margin: 16px 32px 0;
+    margin: 24px 32px 0;
     padding: 20px 24px;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -207,31 +189,36 @@
   }
   .config-warning + .config-warning { margin-top: 8px; }
   .config-footer { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
-  #resetConfigBtn { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
 
-  .result-wrap { padding: 24px 32px 40px; }
-  .result-summary {
-    display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 18px;
-    padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  .progress-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 32px 0; }
+  .progress-chip {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 12px; border-radius: 20px; font-size: 12px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
   }
-  .stat { display: flex; flex-direction: column; gap: 4px; }
-  .stat .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-  .stat .stat-value { font-size: 16px; font-family: 'IBM Plex Mono', monospace; }
+  .progress-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex: none; }
+  .progress-chip.running { color: var(--text); border-color: var(--accent); }
+  .progress-chip.running .dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .progress-chip.done { color: var(--text); }
+  .progress-chip.done .dot { background: var(--positive); }
+  .progress-chip.error { color: var(--negative); border-color: var(--negative); }
+  .progress-chip.error .dot { background: var(--negative); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #waitNote { margin: 10px 32px 0; font-size: 12px; color: var(--text-dim); }
 
-  table.detail-table { width: 100%; border-collapse: collapse; }
-  table.detail-table th {
-    text-align: right; font-size: 10px; font-weight: 500; color: var(--text-dim);
-    padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  .table-wrap { overflow-x: auto; padding: 24px 32px 40px; }
+  table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+  th {
+    text-align: right; font-size: 11px; font-weight: 500; color: var(--text-dim);
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; user-select: none;
   }
-  table.detail-table th:first-child, table.detail-table td:first-child { text-align: left; }
-  table.detail-table td { font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
-  tr.level-pass td { background: rgba(76,175,125,0.07); }
-  tr.level-fail td { background: rgba(225,97,91,0.05); }
-  td.level-note {
-    text-align: left; font-size: 11px; color: var(--text-dim);
-    padding: 4px 10px 8px; white-space: normal; border-bottom: 1px solid var(--border);
-  }
-  td.level-note.reason-note { color: var(--negative); }
+  th:first-child, td:first-child { text-align: left; }
+
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: right; white-space: nowrap; }
+  tbody tr:hover { background: var(--surface-alt); }
+  td.symbol { font-weight: 600; text-align: left; }
+  td.tier-cell { text-align: left; color: var(--text-dim); font-size: 12px; }
   .pos { color: var(--positive); }
   .neg { color: var(--negative); }
 
@@ -244,8 +231,8 @@
 <nav class="sidebar">
   <div class="sidebar-title">ATRx</div>
   <a href="/" class="nav-link">ATRx Screener</a>
-  <a href="/atrx-stock" class="nav-link sub-link active">ATRx Stock</a>
-  <a href="/find-atrx-opps" class="nav-link sub-link">Find ATRx Opps</a>
+  <a href="/atrx-stock" class="nav-link sub-link">ATRx Stock</a>
+  <a href="/find-atrx-opps" class="nav-link sub-link active">Find ATRx Opps</a>
   <a href="/breakout" class="nav-link">Breakout Screener</a>
   <a href="/cost-basis" class="nav-link">Cost Basis</a>
   <a href="/performance-log" class="nav-link">Performance Log</a>
@@ -255,8 +242,9 @@
 
 <header>
   <div>
-    <h1>ATRx Stock</h1>
-    <div class="meta" id="meta">Enter a ticker and run.</div>
+    <h1>Find ATRx Opps</h1>
+    <div class="meta" id="meta">Not run yet.</div>
+    <p class="sub">Runs the ATRx screener across every universe, one at a time (30s apart, to stay clear of Kite's rate limits), and lists only the candidates that pass the filter -- across all universes, not just one.</p>
   </div>
   <div class="actions">
     <span id="loginStatus">checking login…</span>
@@ -266,21 +254,11 @@
 
 <div id="banner"></div>
 
-<div id="tickerSection">
-  <div class="ticker-row">
-    <div class="ticker-field">
-      <label for="tickerInput">Ticker</label>
-      <input id="tickerInput" type="text" placeholder="e.g. RELIANCE" autocomplete="off">
-    </div>
-    <button id="runBtn">Run</button>
-  </div>
-</div>
-
 <div id="configSection">
   <div class="config-header" id="configHeader">
     <div>
       <h2>Screening configuration</h2>
-      <p class="sub">Starting values are copied from the main ATRx Screener's current configuration -- edit freely here, changes only apply to this run and don't affect the main screener.</p>
+      <p class="sub">Defaults are loaded from config.py. Review or adjust, then run -- values here apply to every universe in this run.</p>
     </div>
     <button class="config-toggle" id="configToggleBtn" type="button"><span class="chevron">▾</span> <span id="configToggleLabel">Hide</span></button>
   </div>
@@ -288,21 +266,30 @@
     <div id="configGroups"></div>
     <div id="configWarnings"></div>
     <div class="config-footer">
-      <button id="resetConfigBtn" type="button">Reset to Screener's values</button>
+      <button id="runAllBtn">Run All</button>
+      <button id="resetConfigBtn" type="button">Reset to defaults</button>
     </div>
   </div>
 </div>
 
-<div id="empty" style="display:none"></div>
+<div class="progress-row" id="progressRow"></div>
+<div id="waitNote"></div>
 
-<div class="result-wrap" id="resultWrap" style="display:none"></div>
+<div id="empty" style="display:none">No candidates found in any universe on this run.</div>
+
+<div class="table-wrap">
+  <table id="resultsTable" style="display:none">
+    <thead><tr id="headerRow"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
 
 <footer>
-  Same level-detection and backtest logic as the main ATRx Screener, run
-  against a single ticker instead of a universe tier -- there's no
-  relative-volatility pre-filter here (that only makes sense across a list
-  of stocks), so every level found for this symbol is shown regardless of
-  how volatile it is. This tool only screens -- it never places an order.
+  This tool only screens and ranks -- it never places an order. Each universe is screened with the
+  Kite API sequentially with a 30s gap between calls, so a full run across three universes takes a
+  few minutes; you can switch to another tab or application while it runs, the run keeps going as
+  long as this browser tab stays open. Nothing here is a recommendation to trade; review the sample
+  size behind any statistic (backtest n) before acting on it.
 </footer>
 
 <script src="/performance-log-widget.js"></script>
@@ -311,6 +298,8 @@ const CONFIG_GROUPS = [
   { label: "Volatility", fields: [
     { key: "atr_period", label: "ATR period (days)", step: 1,
       tip: "Days averaged to measure volatility (ATR). Higher = smoother, slower-reacting reading. Lower = more sensitive to recent price swings." },
+    { key: "min_atr_percentile", label: "Min ATR percentile", step: 1,
+      tip: "Only keeps stocks whose current volatility ranks at/above this percentile within your own universe. Higher = fewer, more volatile candidates survive the first filter." },
   ]},
   { label: "Level detection", fields: [
     { key: "pivot_window", label: "Pivot window (days)", step: 1,
@@ -354,15 +343,17 @@ const CONFIG_GROUPS = [
   ]},
 ];
 
-const LEVEL_COLUMNS = [
+const CANDIDATE_COLUMNS = [
+  { key: "tier", label: "Universe" },
+  { key: "symbol", label: "Symbol" },
+  { key: "current_price", label: "Price" },
+  { key: "atr_pct", label: "ATR%" },
   { key: "level", label: "Level" },
   { key: "atr", label: "ATR" },
   { key: "atrx", label: "ATRx" },
   { key: "touches", label: "Touches" },
   { key: "breaches", label: "Breach" },
   { key: "recency_weight", label: "Recency" },
-  { key: "meets_criteria", label: "Touch/breach OK" },
-  { key: "in_range", label: "In ATRx range" },
   { key: "backtest_touches", label: "BT n",
     tip: "Sample size behind the backtest columns to the right: every historical close within \"Touch band (ATR)\" of this level, not just confirmed pivots. A high hit rate off a low BT n is a coin flip, not an edge -- check this before trusting Hit%/AvgRet%." },
   { key: "hit_rate_3d_pct", label: "Hit% 3d" },
@@ -373,25 +364,24 @@ const LEVEL_COLUMNS = [
   { key: "action", label: "" },
 ];
 
-const STATUS_MESSAGES = {
-  insufficient_data: "Not enough historical data to compute ATR for this symbol.",
-  fetch_failed: "Could not fetch historical data for this symbol.",
-};
+const TIER_LABELS = { large_cap: "Large Cap", mid_cap: "Mid Cap", small_cap: "Small Cap" };
+const FALLBACK_TIERS = [{ tier: "large_cap" }, { tier: "mid_cap" }, { tier: "small_cap" }];
+const RUN_GAP_MS = 30000;
 
+let CANDIDATES = [];
+let PROGRESS = [];
 let DEFAULT_CONFIG = {};
-let LAST_GENERATED_AT = null;
-let CURRENT_BREAKDOWN = null;
 
-// A screener run is a live Kite call, so it only ever happens on an
-// explicit "Run" click -- it never auto-runs. But without caching,
-// navigating away and back throws the last result away too, forcing a
-// re-run just to look at it again. So the last result is persisted here
-// and restored on page load.
-const CACHE_KEY = "atrx_stock_cache_v1";
+// Same pattern as the other screener pages: a run is expensive (multiple
+// sequential live Kite calls, minutes end to end), so it only ever happens
+// on an explicit "Run All" click. The last completed run's candidate list
+// is cached here and restored on page load so navigating away and back
+// doesn't throw it away.
+const CACHE_KEY = "atrx_find_opps_cache_v1";
 
-function saveCache(data) {
+function saveCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, cachedAt: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ candidates: CANDIDATES, progress: PROGRESS, cachedAt: Date.now() }));
   } catch (e) { /* private browsing / storage full -- just skip caching */ }
 }
 
@@ -402,6 +392,10 @@ function loadCache() {
   } catch (e) {
     return null;
   }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function fmt(val, decimals) {
@@ -504,87 +498,78 @@ function collectConfigOverrides() {
   return overrides;
 }
 
-function levelDetailHtml(symbol, levels) {
-  if (levels.length === 0) {
-    return `<p class="detail-label" style="color:var(--text-dim);font-size:13px">No pivot clusters at all were found for ${symbol} in the lookback window.</p>`;
-  }
-  const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
-  const rows = levels.map((lvl, lvlIdx) => {
-    const rowClass = lvl.is_candidate ? "level-pass" : "level-fail";
-    const cells = LEVEL_COLUMNS.map(c => {
-      if (c.key === "action") {
-        return lvl.is_candidate
-          ? `<td><button type="button" class="plw-trigger" data-symbol="${escapeHtml(symbol)}" data-level-idx="${lvlIdx}">Log Trade</button></td>`
-          : `<td></td>`;
-      }
-      if (c.key === "meets_criteria" || c.key === "in_range") {
-        const ok = lvl[c.key];
-        return `<td class="${ok ? "pos" : "neg"}">${ok ? "yes" : "no"}</td>`;
-      }
-      if (c.key === "score") {
-        return `<td class="num">${lvl.score != null ? fmt(lvl.score, 3) : "–"}</td>`;
-      }
-      const decimals = c.key === "level" || c.key === "atr" ? 2
-        : (c.key.includes("pct") || c.key === "atrx" || c.key === "recency_weight") ? 2 : 0;
-      const suffix = c.key.includes("hit_rate") || c.key.includes("avg_fwd_ret") ? (lvl[c.key] != null ? "%" : "") : "";
-      return `<td class="num">${fmt(lvl[c.key], decimals)}${suffix}</td>`;
-    }).join("");
-
-    const pivotsText = lvl.pivots.map(p => `${p.date} (${fmt(p.price, 2)})`).join(", ");
-    const extraRows = [];
-    if (!lvl.is_candidate && lvl.rejection_reasons.length) {
-      extraRows.push(`<tr class="${rowClass}"><td colspan="${LEVEL_COLUMNS.length}" class="level-note reason-note">✗ Rejected: ${escapeHtml(lvl.rejection_reasons.join("; "))}</td></tr>`);
-    }
-    extraRows.push(`<tr class="${rowClass}"><td colspan="${LEVEL_COLUMNS.length}" class="level-note">Pivots (${lvl.pivots.length}): ${escapeHtml(pivotsText)}</td></tr>`);
-
-    return `<tr class="${rowClass}">${cells}</tr>` + extraRows.join("");
-  }).join("");
-  return `
-    <table class="detail-table">
-      <thead><tr>${headerCells}</tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
+function renderHeader() {
+  const row = document.getElementById("headerRow");
+  row.innerHTML = CANDIDATE_COLUMNS.map(c =>
+    `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`
+  ).join("");
 }
 
-function renderResult(data, { cached = false } = {}) {
-  const meta = document.getElementById("meta");
-  const wrap = document.getElementById("resultWrap");
+function renderCandidates() {
+  const table = document.getElementById("resultsTable");
   const empty = document.getElementById("empty");
-  const breakdown = data.breakdown;
-  LAST_GENERATED_AT = data.generated_at;
-  CURRENT_BREAKDOWN = breakdown;
+  const tbody = document.getElementById("tbody");
+  const meta = document.getElementById("meta");
 
-  meta.innerHTML =
-    (cached ? `<span class="num">Showing cached results</span> &middot; ` : "") +
-    `Generated <span class="num">${new Date(data.generated_at).toLocaleString()}</span> for <span class="num">${escapeHtml(data.symbol)}</span>`;
-
-  if (breakdown.status !== "screened") {
-    wrap.style.display = "none";
-    empty.style.display = "block";
-    empty.textContent = STATUS_MESSAGES[breakdown.status] || `Could not screen ${breakdown.symbol}.`;
+  if (CANDIDATES.length === 0) {
+    table.style.display = "none";
+    empty.style.display = PROGRESS.length ? "block" : "none";
+    meta.textContent = PROGRESS.length ? "No candidates found yet." : "Not run yet.";
     return;
   }
-  empty.style.display = "none";
 
-  const candidateCount = breakdown.levels.filter(l => l.is_candidate).length;
-  wrap.innerHTML = `
-    <div class="result-summary">
-      <div class="stat"><span class="stat-label">Symbol</span><span class="stat-value">${escapeHtml(breakdown.symbol)}</span></div>
-      <div class="stat"><span class="stat-label">Price</span><span class="stat-value">${fmt(breakdown.current_price, 2)}</span></div>
-      <div class="stat"><span class="stat-label">ATR%</span><span class="stat-value">${fmt(breakdown.atr_pct, 2)}%</span></div>
-      <div class="stat"><span class="stat-label">Levels found</span><span class="stat-value">${breakdown.levels.length}</span></div>
-      <div class="stat"><span class="stat-label">Qualifying today</span><span class="stat-value ${candidateCount ? 'pos' : ''}">${candidateCount}</span></div>
-    </div>
-    ${levelDetailHtml(breakdown.symbol, breakdown.levels)}
-  `;
-  wrap.style.display = "block";
+  empty.style.display = "none";
+  renderHeader();
+
+  const sorted = [...CANDIDATES].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+
+  tbody.innerHTML = sorted.map((c, idx) => {
+    const cells = CANDIDATE_COLUMNS.map(col => {
+      if (col.key === "tier") return `<td class="tier-cell">${TIER_LABELS[c.tier] || c.tier}</td>`;
+      if (col.key === "symbol") return `<td class="symbol">${escapeHtml(c.symbol)}</td>`;
+      if (col.key === "current_price") return `<td class="num">${fmt(c.current_price, 2)}</td>`;
+      if (col.key === "atr_pct") return `<td class="num">${c.atr_pct != null ? fmt(c.atr_pct, 2) + "%" : "–"}</td>`;
+      if (col.key === "action") {
+        return `<td><button type="button" class="plw-trigger" data-idx="${idx}">Log Trade</button></td>`;
+      }
+      if (col.key === "score") {
+        return `<td class="num ${c.score >= 0 ? "pos" : "neg"}">${fmt(c.score, 3)}</td>`;
+      }
+      const decimals = col.key === "level" || col.key === "atr" ? 2
+        : (col.key.includes("pct") || col.key === "atrx" || col.key === "recency_weight") ? 2 : 0;
+      const suffix = col.key.includes("hit_rate") || col.key.includes("avg_fwd_ret") ? (c[col.key] != null ? "%" : "") : "";
+      return `<td class="num">${fmt(c[col.key], decimals)}${suffix}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  // re-attach the sorted array so the click handler's index lookup matches what was rendered
+  tbody.dataset.sorted = "1";
+  tbody._sortedCandidates = sorted;
+
+  table.style.display = "table";
+  meta.innerHTML = `<span class="num">${CANDIDATES.length}</span> candidate(s) found across ${PROGRESS.filter(p => p.status !== "pending").length} of ${PROGRESS.length} universe(s) screened so far.`;
+}
+
+function renderProgress() {
+  const row = document.getElementById("progressRow");
+  row.innerHTML = PROGRESS.map(p => {
+    const label = TIER_LABELS[p.tier] || p.tier;
+    let text = label;
+    if (p.status === "running") text += " — running…";
+    else if (p.status === "done") text += ` — ${p.candidateCount} candidate(s)`;
+    else if (p.status === "error") text += ` — ${p.error}`;
+    return `<div class="progress-chip ${p.status}"><span class="dot"></span>${escapeHtml(text)}</div>`;
+  }).join("");
+}
+
+function setWaitNote(text) {
+  document.getElementById("waitNote").textContent = text || "";
 }
 
 async function checkStatus() {
   const loginStatusEl = document.getElementById("loginStatus");
   const loginBtn = document.getElementById("loginBtn");
-  const tickerSection = document.getElementById("tickerSection");
   const configSection = document.getElementById("configSection");
   try {
     const res = await fetch("/api/status");
@@ -593,14 +578,12 @@ async function checkStatus() {
       loginStatusEl.textContent = "logged in";
       loginStatusEl.className = "ok";
       loginBtn.textContent = "Re-login";
-      tickerSection.classList.add("visible");
       configSection.classList.add("visible");
       loadConfig();
     } else {
       loginStatusEl.textContent = "not logged in";
       loginStatusEl.className = "";
       loginBtn.textContent = "Log in with Zerodha";
-      tickerSection.classList.remove("visible");
       configSection.classList.remove("visible");
     }
   } catch {
@@ -627,7 +610,7 @@ document.getElementById("resetConfigBtn").addEventListener("click", () => {
   applyConfigValues(DEFAULT_CONFIG);
 });
 
-const CONFIG_COLLAPSE_KEY = "atrx_stock_config_collapsed";
+const CONFIG_COLLAPSE_KEY = "atrx_find_opps_config_collapsed";
 function setConfigCollapsed(collapsed) {
   document.getElementById("configSection").classList.toggle("collapsed", collapsed);
   document.getElementById("configToggleLabel").textContent = collapsed ? "Show" : "Hide";
@@ -645,69 +628,124 @@ document.getElementById("configGroups").addEventListener("input", (e) => {
   if (e.target.matches("input[data-key]")) checkConfigWarnings();
 });
 
-async function runForTicker() {
-  const runBtn = document.getElementById("runBtn");
-  const wrap = document.getElementById("resultWrap");
-  const empty = document.getElementById("empty");
-  const symbol = document.getElementById("tickerInput").value.trim().toUpperCase();
+function addCandidatesFromRun(tier, data) {
+  const breakdown = data.screening_breakdown || [];
+  let count = 0;
+  breakdown.forEach(b => {
+    if (b.status !== "screened") return;
+    (b.levels || []).forEach(lvl => {
+      if (!lvl.is_candidate) return;
+      count++;
+      CANDIDATES.push({
+        tier,
+        symbol: b.symbol,
+        current_price: b.current_price,
+        atr_pct: b.atr_pct,
+        generated_at: data.generated_at,
+        ...lvl,
+      });
+    });
+  });
+  return count;
+}
 
-  if (!symbol) {
-    banner("error", "Enter a ticker first.");
-    return;
-  }
-
+async function runAll() {
+  const runBtn = document.getElementById("runAllBtn");
   runBtn.disabled = true;
   runBtn.textContent = "Running…";
   clearBanner();
-  empty.style.display = "none";
-  wrap.style.display = "none";
+  setWaitNote("");
+  CANDIDATES = [];
+  document.getElementById("meta").textContent = "Starting run…";
 
+  let tiers;
   try {
-    const overrides = collectConfigOverrides();
-    const res = await fetch("/api/run-screener-symbol", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol, overrides }),
-    });
+    const res = await fetch("/api/universe-tiers");
     const data = await res.json();
-
-    if (!res.ok) {
-      banner("error", data.error || "Screener run failed.");
-      return;
-    }
-
-    renderResult(data);
-    saveCache(data);
+    tiers = Array.isArray(data) && data.length ? data : FALLBACK_TIERS;
   } catch (e) {
-    banner("error", "Request failed: " + e.message);
-  } finally {
-    runBtn.disabled = false;
-    runBtn.textContent = "Run";
+    tiers = FALLBACK_TIERS;
   }
+
+  PROGRESS = tiers.map(t => ({ tier: t.tier, status: "pending", candidateCount: null, error: null }));
+  renderProgress();
+  renderCandidates();
+
+  const overrides = collectConfigOverrides();
+
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i].tier;
+    PROGRESS[i].status = "running";
+    renderProgress();
+
+    let notLoggedIn = false;
+    try {
+      const res = await fetch("/api/run-screener", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides, universe_tier: tier }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        PROGRESS[i].status = "error";
+        PROGRESS[i].error = data.error || "run failed";
+        banner("error", `${TIER_LABELS[tier] || tier}: ${data.error || "Screener run failed."}`);
+        notLoggedIn = res.status === 401;
+      } else {
+        const count = addCandidatesFromRun(tier, data);
+        PROGRESS[i].status = "done";
+        PROGRESS[i].candidateCount = count;
+      }
+    } catch (e) {
+      PROGRESS[i].status = "error";
+      PROGRESS[i].error = e.message;
+      banner("error", `${TIER_LABELS[tier] || tier}: request failed -- ${e.message}`);
+    }
+    renderProgress();
+    renderCandidates();
+    saveCache();
+
+    if (notLoggedIn) break; // every remaining universe would fail the same way
+
+    const isLast = i === tiers.length - 1;
+    if (!isLast && PROGRESS[i].status !== "error") {
+      setWaitNote(`Waiting 30s before the next universe (avoids Kite API rate limits)…`);
+      await sleep(RUN_GAP_MS);
+      setWaitNote("");
+    }
+  }
+
+  saveCache();
+  runBtn.disabled = false;
+  runBtn.textContent = "Run All";
 }
 
-document.getElementById("runBtn").addEventListener("click", runForTicker);
-document.getElementById("tickerInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") runForTicker();
-});
+document.getElementById("runAllBtn").addEventListener("click", runAll);
 
-document.getElementById("resultWrap").addEventListener("click", (e) => {
+document.getElementById("tbody").addEventListener("click", (e) => {
   const btn = e.target.closest(".plw-trigger");
-  if (!btn || !CURRENT_BREAKDOWN) return;
-  const lvlIdx = parseInt(btn.dataset.levelIdx, 10);
-  const lvl = CURRENT_BREAKDOWN.levels[lvlIdx];
-  if (!lvl) return;
+  if (!btn) return;
+  const tbody = document.getElementById("tbody");
+  const sorted = tbody._sortedCandidates || [];
+  const c = sorted[parseInt(btn.dataset.idx, 10)];
+  if (!c) return;
+  const { tier, symbol, current_price, atr_pct, generated_at, ...lvl } = c;
   PerformanceLog.open({
-    symbol: CURRENT_BREAKDOWN.symbol,
-    price: CURRENT_BREAKDOWN.current_price,
-    meta: { ...lvl, signal_date: LAST_GENERATED_AT },
+    symbol,
+    price: current_price,
+    meta: { ...lvl, universe_tier: tier, signal_date: generated_at },
   });
 });
 
 const cached = loadCache();
 if (cached) {
-  document.getElementById("tickerInput").value = cached.data.symbol;
-  renderResult(cached.data, { cached: true });
+  CANDIDATES = cached.candidates || [];
+  PROGRESS = cached.progress || [];
+  renderProgress();
+  renderCandidates();
+  document.getElementById("meta").innerHTML =
+    `<span class="num">Showing cached results</span> &middot; <span class="num">${CANDIDATES.length}</span> candidate(s) found.`;
 }
 
 checkStatus();

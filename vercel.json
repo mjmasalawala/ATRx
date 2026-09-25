@@ -11,6 +11,7 @@
     { "source": "/performance-log", "destination": "/api/index?r=performance-log" },
     { "source": "/performance-log-widget.js", "destination": "/api/index?r=performance-log-widget-js" },
     { "source": "/breakout", "destination": "/api/index?r=breakout" },
+    { "source": "/find-atrx-opps", "destination": "/api/index?r=find-atrx-opps" },
     { "source": "/api/login", "destination": "/api/index?r=login" },
     { "source": "/api/callback", "destination": "/api/index?r=callback" },
     { "source": "/api/status", "destination": "/api/index?r=status" },
