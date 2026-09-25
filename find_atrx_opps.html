@@ -347,8 +347,9 @@ const CANDIDATE_COLUMNS = [
   { key: "tier", label: "Universe" },
   { key: "symbol", label: "Symbol" },
   { key: "current_price", label: "Price" },
+  { key: "level", label: "Trigger Level",
+    tip: "The support level price this candidate is near -- this is the reference price for entry, not the current market price." },
   { key: "atr_pct", label: "ATR%" },
-  { key: "level", label: "Level" },
   { key: "atr", label: "ATR" },
   { key: "atrx", label: "ATRx" },
   { key: "touches", label: "Touches" },
@@ -526,6 +527,21 @@ function renderHeader() {
   ).join("");
 }
 
+// A symbol can qualify at more than one level in the same run (or show up
+// again in a different universe tier, if tiers overlap) -- only the
+// highest-scoring level per symbol is worth acting on for entry, so the
+// table shows one row per symbol, not one row per qualifying level.
+function bestLevelPerSymbol(candidates) {
+  const bySymbol = new Map();
+  candidates.forEach(c => {
+    const existing = bySymbol.get(c.symbol);
+    if (!existing || (c.score ?? -Infinity) > (existing.score ?? -Infinity)) {
+      bySymbol.set(c.symbol, c);
+    }
+  });
+  return [...bySymbol.values()];
+}
+
 function renderCandidates() {
   const table = document.getElementById("resultsTable");
   const empty = document.getElementById("empty");
@@ -542,7 +558,7 @@ function renderCandidates() {
   empty.style.display = "none";
   renderHeader();
 
-  const sorted = [...CANDIDATES].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
+  const sorted = bestLevelPerSymbol(CANDIDATES).sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
 
   tbody.innerHTML = sorted.map((c, idx) => {
     const cells = CANDIDATE_COLUMNS.map(col => {
@@ -569,7 +585,10 @@ function renderCandidates() {
   tbody._sortedCandidates = sorted;
 
   table.style.display = "table";
-  meta.innerHTML = `<span class="num">${CANDIDATES.length}</span> candidate(s) found across ${PROGRESS.filter(p => p.status !== "pending").length} of ${PROGRESS.length} universe(s) screened so far.`;
+  const symbolCountNote = sorted.length !== CANDIDATES.length
+    ? ` (<span class="num">${sorted.length}</span> unique symbol(s), best level shown per symbol)`
+    : "";
+  meta.innerHTML = `<span class="num">${CANDIDATES.length}</span> candidate(s) found${symbolCountNote} across ${PROGRESS.filter(p => p.status !== "pending").length} of ${PROGRESS.length} universe(s) screened so far.`;
 }
 
 function renderProgress() {
@@ -769,8 +788,8 @@ if (cached) {
   LAST_FORWARD_DAYS_LONG = cached.forwardDaysLong ?? 5;
   renderProgress();
   renderCandidates();
-  document.getElementById("meta").innerHTML =
-    `<span class="num">Showing cached results</span> &middot; <span class="num">${CANDIDATES.length}</span> candidate(s) found.`;
+  const meta = document.getElementById("meta");
+  meta.innerHTML = `<span class="num">Showing cached results</span> &middot; ` + meta.innerHTML;
 }
 
 checkStatus();
