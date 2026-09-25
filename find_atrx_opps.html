@@ -371,6 +371,14 @@ const RUN_GAP_MS = 30000;
 let CANDIDATES = [];
 let PROGRESS = [];
 let DEFAULT_CONFIG = {};
+// The 3d/5d suffix in "Hit% 3d"/"AvgRet% 3d" etc. is only accurate for
+// config.py's defaults -- the actual day counts are user-tunable
+// (forward_days_short/forward_days_long), so the labels reflect whatever
+// was actually used for the currently-displayed run, not a hardcoded 3/5.
+// Fixed for the whole "Run All" pass (the same overrides apply to every
+// universe in one run), not re-read per tier.
+let LAST_FORWARD_DAYS_SHORT = 3;
+let LAST_FORWARD_DAYS_LONG = 5;
 
 // Same pattern as the other screener pages: a run is expensive (multiple
 // sequential live Kite calls, minutes end to end), so it only ever happens
@@ -381,7 +389,10 @@ const CACHE_KEY = "atrx_find_opps_cache_v1";
 
 function saveCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ candidates: CANDIDATES, progress: PROGRESS, cachedAt: Date.now() }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      candidates: CANDIDATES, progress: PROGRESS, cachedAt: Date.now(),
+      forwardDaysShort: LAST_FORWARD_DAYS_SHORT, forwardDaysLong: LAST_FORWARD_DAYS_LONG,
+    }));
   } catch (e) { /* private browsing / storage full -- just skip caching */ }
 }
 
@@ -498,10 +509,20 @@ function collectConfigOverrides() {
   return overrides;
 }
 
+const FORWARD_DAY_LABELS = {
+  hit_rate_3d_pct: () => `Hit% ${LAST_FORWARD_DAYS_SHORT}d`,
+  avg_fwd_ret_3d_pct: () => `AvgRet% ${LAST_FORWARD_DAYS_SHORT}d`,
+  hit_rate_5d_pct: () => `Hit% ${LAST_FORWARD_DAYS_LONG}d`,
+  avg_fwd_ret_5d_pct: () => `AvgRet% ${LAST_FORWARD_DAYS_LONG}d`,
+};
+function columnLabel(col) {
+  return FORWARD_DAY_LABELS[col.key] ? FORWARD_DAY_LABELS[col.key]() : col.label;
+}
+
 function renderHeader() {
   const row = document.getElementById("headerRow");
   row.innerHTML = CANDIDATE_COLUMNS.map(c =>
-    `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`
+    `<th>${columnLabel(c)}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`
   ).join("");
 }
 
@@ -672,6 +693,8 @@ async function runAll() {
   renderCandidates();
 
   const overrides = collectConfigOverrides();
+  LAST_FORWARD_DAYS_SHORT = overrides.forward_days_short ?? 3;
+  LAST_FORWARD_DAYS_LONG = overrides.forward_days_long ?? 5;
 
   for (let i = 0; i < tiers.length; i++) {
     const tier = tiers[i].tier;
@@ -742,6 +765,8 @@ const cached = loadCache();
 if (cached) {
   CANDIDATES = cached.candidates || [];
   PROGRESS = cached.progress || [];
+  LAST_FORWARD_DAYS_SHORT = cached.forwardDaysShort ?? 3;
+  LAST_FORWARD_DAYS_LONG = cached.forwardDaysLong ?? 5;
   renderProgress();
   renderCandidates();
   document.getElementById("meta").innerHTML =

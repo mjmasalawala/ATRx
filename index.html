@@ -394,6 +394,12 @@ const STATUS_LABELS = {
 let BREAKDOWN = [];
 let LAST_GENERATED_AT = null;
 let DEFAULT_CONFIG = {};
+// The 3d/5d suffix in "Hit% 3d"/"AvgRet% 3d" etc. is only accurate for
+// config.py's defaults -- the actual day counts are user-tunable
+// (forward_days_short/forward_days_long), so the labels reflect whatever
+// was actually used for the currently-displayed run, not a hardcoded 3/5.
+let LAST_FORWARD_DAYS_SHORT = 3;
+let LAST_FORWARD_DAYS_LONG = 5;
 const expandedSymbols = new Set();
 
 // A screener run is expensive (live Kite calls across the whole universe),
@@ -528,11 +534,21 @@ function renderHeader() {
   });
 }
 
+const FORWARD_DAY_LABELS = {
+  hit_rate_3d_pct: () => `Hit% ${LAST_FORWARD_DAYS_SHORT}d`,
+  avg_fwd_ret_3d_pct: () => `AvgRet% ${LAST_FORWARD_DAYS_SHORT}d`,
+  hit_rate_5d_pct: () => `Hit% ${LAST_FORWARD_DAYS_LONG}d`,
+  avg_fwd_ret_5d_pct: () => `AvgRet% ${LAST_FORWARD_DAYS_LONG}d`,
+};
+function columnLabel(col) {
+  return FORWARD_DAY_LABELS[col.key] ? FORWARD_DAY_LABELS[col.key]() : col.label;
+}
+
 function levelDetailHtml(symbol, levels) {
   if (levels.length === 0) {
     return `<div class="detail-wrap"><p class="detail-label">No pivot clusters at all were found for ${symbol} in the lookback window.</p></div>`;
   }
-  const headerCells = LEVEL_COLUMNS.map(c => `<th>${c.label}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
+  const headerCells = LEVEL_COLUMNS.map(c => `<th>${columnLabel(c)}${c.tip ? ` <span class="tip" tabindex="0" data-tip="${escapeHtml(c.tip)}">?</span>` : ""}</th>`).join("");
   const rows = levels.map((lvl, lvlIdx) => {
     const rowClass = lvl.is_candidate ? "level-pass" : "level-fail";
     const cells = LEVEL_COLUMNS.map(c => {
@@ -710,6 +726,8 @@ function renderRunResult(data, { cached = false } = {}) {
   expandedSymbols.clear();
   BREAKDOWN = data.screening_breakdown || [];
   LAST_GENERATED_AT = data.generated_at;
+  LAST_FORWARD_DAYS_SHORT = data._forward_days_short ?? 3;
+  LAST_FORWARD_DAYS_LONG = data._forward_days_long ?? 5;
 
   meta.innerHTML =
     (cached ? `<span class="num">Showing cached results</span> &middot; ` : "") +
@@ -757,6 +775,9 @@ document.getElementById("runBtn").addEventListener("click", async () => {
       banner("error", data.error || "Screener run failed.");
       return;
     }
+
+    data._forward_days_short = overrides.forward_days_short;
+    data._forward_days_long = overrides.forward_days_long;
 
     renderRunResult(data);
     saveCache(data);
