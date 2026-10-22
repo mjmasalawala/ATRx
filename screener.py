@@ -18,7 +18,8 @@ import logging
 import sys
 import time as time_module
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -32,6 +33,8 @@ from backtest import backtest_level
 from report import generate_html_report
 
 logger = logging.getLogger("atrx.screener")
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def setup_logging():
@@ -210,7 +213,8 @@ def _config_overrides(overrides: dict | None):
             setattr(CONFIG, key, value)
 
 
-def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier: str = "large_cap") -> dict:
+def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier: str = "large_cap",
+                 save_atr_snapshot: bool = False) -> dict:
     """
     Runs the full scan against an already-authenticated KiteConnect session
     and returns the results as data (no file I/O, no sys.exit) so it can be
@@ -218,9 +222,13 @@ def run_screener(kite: KiteConnect, overrides: dict | None = None, universe_tier
 
     `universe_tier` selects which market-cap tier (large_cap/mid_cap/
     small_cap) to screen -- see db_store.load_universe.
+
+    `save_atr_snapshot` overwrites each symbol's latest ATR% row (the High
+    Volatility page reuses it). Only the manual "Find ATRx Opps" run asks
+    for it; the every-25-minutes alert cron doesn't.
     """
     with _config_overrides(overrides):
-        result = _run_screener(kite, universe_tier)
+        result = _run_screener(kite, universe_tier, save_atr_snapshot)
         _persist_config_used()
         return result
 
@@ -293,7 +301,27 @@ def _persist_config_used() -> None:
         logger.warning("Could not persist config to DB: %s", e)
 
 
-def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap") -> dict:
+def _persist_atr_snapshot(universe_tier: str, atr_pcts: dict, prices: dict, rank_of) -> None:
+    """Saves the latest ATR% per symbol for the High Volatility page. Skipped
+    during NSE market hours: Kite's daily history then includes today's
+    partial candle, which would skew ATR% away from the clean pre-open
+    figure. Non-fatal, like _persist_config_used."""
+    now = datetime.now(IST)
+    if now.weekday() < 5 and dt_time(9, 15) <= now.time() <= dt_time(15, 30):
+        logger.info("Skipping ATR snapshot save: market is open, today's candle is partial.")
+        return
+    try:
+        import db_store
+        rows = [{"symbol": sym, "atr_pct": round(v * 100, 2), "atr_percentile_rank": rank_of(sym),
+                 "price": round(prices[sym], 2), "atr_period": CONFIG.atr_period}
+                for sym, v in atr_pcts.items()]
+        db_store.upsert_atr_snapshot(rows, universe_tier, now.date())
+    except Exception as e:
+        logger.warning("Could not persist ATR snapshot: %s", e)
+
+
+def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap",
+                  save_atr_snapshot: bool = False) -> dict:
     symbols = CONFIG.load_universe(universe_tier)
 
     tokens = resolve_tokens(kite, symbols)
@@ -354,6 +382,9 @@ def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap") -> dict:
     def percentile_rank(sym: str) -> float:
         v = atr_pcts[sym]
         return round(sum(1 for other in atr_pcts.values() if other <= v) / len(atr_pcts) * 100, 1)
+
+    if save_atr_snapshot:
+        _persist_atr_snapshot(universe_tier, atr_pcts, prices, percentile_rank)
 
     # Every symbol in the universe gets a row in the breakdown, regardless
     # of how far it got -- this is what makes "no candidates" explainable

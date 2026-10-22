@@ -13,7 +13,7 @@ import csv
 import io
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +30,9 @@ from breakout_screener import run_breakout_screener
 from breakout_stats import summarize as summarize_breakout_events
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
+from hv_config import CHARGES, config_from_dict as hv_config_from_dict
+from hv_journal import break_even_price, build_journal, position_summary, target_price
+from hv_screener import build_candidates as hv_build_candidates, get_quotes as hv_get_quotes, today_ist
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
 from screener import run_screener, run_screener_symbol
 from token_store import load_access_token, save_access_token
@@ -43,6 +46,7 @@ _PERFORMANCE_LOG_HTML_PATH = Path(__file__).resolve().parent.parent / "performan
 _PERFORMANCE_LOG_WIDGET_JS_PATH = Path(__file__).resolve().parent.parent / "performance_log_widget.js"
 _BREAKOUT_HTML_PATH = Path(__file__).resolve().parent.parent / "breakout.html"
 _FIND_ATRX_OPPS_HTML_PATH = Path(__file__).resolve().parent.parent / "find_atrx_opps.html"
+_HIGH_VOLATILITY_HTML_PATH = Path(__file__).resolve().parent.parent / "high_volatility.html"
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
 
@@ -163,7 +167,8 @@ def run_screener_endpoint():
 
     try:
         kite = get_kite_session_from_token(token)
-        result = run_screener(kite, overrides=overrides, universe_tier=universe_tier)
+        result = run_screener(kite, overrides=overrides, universe_tier=universe_tier,
+                              save_atr_snapshot=True)
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:
@@ -477,6 +482,243 @@ def trade_quotes_endpoint():
     })
 
 
+# ---------------------------------------------------------------------------
+# High Volatility page (manual first-hour trading helper -- places no orders)
+# ---------------------------------------------------------------------------
+
+def high_volatility_page():
+    return _serve_file(_HIGH_VOLATILITY_HTML_PATH, "high_volatility.html not found")
+
+
+def _hv_config():
+    try:
+        persisted = db_store.load_hv_settings()
+    except Exception:
+        persisted = None
+    return hv_config_from_dict(persisted)
+
+
+def _kite_or_error():
+    """(kite, None) when logged in, else (None, (json_response, status))."""
+    try:
+        token = load_access_token()
+    except RuntimeError as e:
+        return None, (jsonify({"error": f"Token store not configured: {e}"}), 500)
+    if not token:
+        return None, (jsonify({"error": "Not logged in. Log in with Zerodha first."}), 401)
+    return get_kite_session_from_token(token), None
+
+
+def _parse_symbols(raw: str) -> list[str]:
+    seen, out = set(), []
+    for s in (raw or "").split(","):
+        s = s.strip().upper()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def hv_settings_endpoint():
+    cfg = _hv_config()
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        merged = cfg.to_dict()
+        merged.update({k: v for k, v in body.items() if k in merged})
+        try:
+            cfg = hv_config_from_dict(merged)
+            db_store.save_hv_settings(cfg.to_dict())
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": f"Invalid setting: {e}"}), 400
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"settings": cfg.to_dict(), "charges": CHARGES})
+
+
+def hv_candidates_endpoint():
+    kite, err = _kite_or_error()
+    if err:
+        return err
+    cfg = _hv_config()
+    extras = _parse_symbols(request.args.get("extras"))
+    force = request.args.get("refresh") == "1"
+    try:
+        if not db_store.load_atr_snapshot() and not extras:
+            return jsonify({"error": "No ATR snapshot saved yet. Run Find ATRx Opps (all three "
+                                     "universes) first, then come back here."}), 400
+        result = hv_build_candidates(kite, cfg, extras, force=force)
+    except (RuntimeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        import traceback
+        return jsonify({"error": f"Unexpected {type(e).__name__}: {e}",
+                        "traceback": traceback.format_exc()}), 500
+    return jsonify(result)
+
+
+def hv_live_endpoint():
+    symbols = _parse_symbols(request.args.get("symbols"))
+    if not symbols:
+        return jsonify({"quotes": {}})
+    kite, err = _kite_or_error()
+    if err:
+        return err
+    try:
+        quotes = hv_get_quotes(kite, symbols)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"quotes": quotes, "fetched_at": datetime.now().astimezone().isoformat()})
+
+
+def hv_day_endpoint():
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        trade_date = body.get("trade_date") or today_ist().isoformat()
+        focus = []
+        for f in body.get("focus") or []:
+            symbol = (f.get("symbol") or "").strip().upper()
+            if not symbol:
+                continue
+            bias = f.get("bias") if f.get("bias") in ("long", "short", "either") else "long"
+            focus.append({"symbol": symbol, "bias": bias, "tags": f.get("tags") or [],
+                          "note": f.get("note"), "pre_meta": f.get("pre_meta")})
+        try:
+            db_store.save_hv_day(trade_date, body.get("gift_nifty"), body.get("note"), focus)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": True})
+
+    date_str = request.args.get("date")
+    try:
+        trade_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else today_ist()
+        return jsonify(db_store.load_hv_day(trade_date))
+    except ValueError:
+        return jsonify({"error": "date must be YYYY-MM-DD"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _fill_args(body):
+    """Validated (qty, price, filled_at) from a request body, or an error response."""
+    try:
+        qty, price = int(body.get("qty")), float(body.get("price"))
+    except (TypeError, ValueError):
+        return None, (jsonify({"error": "qty and price are required numbers"}), 400)
+    if qty <= 0 or price <= 0:
+        return None, (jsonify({"error": "qty and price must be positive"}), 400)
+    return (qty, price, body.get("filled_at") or None), None
+
+
+def hv_position_open_endpoint():
+    body = request.get_json(silent=True) or {}
+    symbol = (body.get("symbol") or "").strip().upper()
+    side = body.get("side")
+    if not symbol or side not in ("long", "short"):
+        return jsonify({"error": "symbol and side (long|short) are required"}), 400
+    args, err = _fill_args(body)
+    if err:
+        return err
+    qty, price, filled_at = args
+    try:
+        trade_date = today_ist()
+        for p in db_store.list_hv_positions(trade_date, trade_date):
+            if p["symbol"] == symbol and position_summary(p["side"], p["fills"])["status"] == "open":
+                return jsonify({"error": f"{symbol} already has an open position today -- use Add "
+                                         "(scale in) or Exit on it."}), 409
+        position_id = db_store.create_hv_position(
+            trade_date, symbol, side, qty, price, filled_at,
+            setup_tag=body.get("setup_tag"), note=body.get("note"), signal_meta=body.get("signal_meta"))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"id": position_id})
+
+
+def hv_fill_endpoint():
+    body = request.get_json(silent=True) or {}
+    kind = body.get("kind")
+    if kind not in ("entry", "exit") or not body.get("position_id"):
+        return jsonify({"error": "position_id and kind (entry|exit) are required"}), 400
+    args, err = _fill_args(body)
+    if err:
+        return err
+    qty, price, filled_at = args
+    try:
+        position = db_store.get_hv_position(int(body["position_id"]))
+        if position is None:
+            return jsonify({"error": "position not found"}), 404
+        summary = position_summary(position["side"], position["fills"])
+        if kind == "exit" and qty > summary["open_qty"]:
+            return jsonify({"error": f"only {summary['open_qty']} shares are open on this position"}), 400
+        if kind == "entry" and summary["status"] == "closed":
+            return jsonify({"error": "this position is closed -- start a new one"}), 400
+        fill_id = db_store.add_hv_fill(position["id"], kind, qty, price, filled_at)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"id": fill_id})
+
+
+def hv_fill_delete_endpoint():
+    fill_id = (request.get_json(silent=True) or {}).get("fill_id")
+    if not fill_id:
+        return jsonify({"error": "fill_id is required"}), 400
+    try:
+        db_store.delete_hv_fill(int(fill_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def hv_position_update_endpoint():
+    body = request.get_json(silent=True) or {}
+    if not body.get("position_id"):
+        return jsonify({"error": "position_id is required"}), 400
+    rating = body.get("execution_rating") if body.get("execution_rating") in ("clean", "rushed") else None
+    try:
+        db_store.update_hv_position(int(body["position_id"]), body.get("setup_tag") or None,
+                                    body.get("note") or None, rating)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def hv_position_delete_endpoint():
+    position_id = (request.get_json(silent=True) or {}).get("position_id")
+    if not position_id:
+        return jsonify({"error": "position_id is required"}), 400
+    try:
+        db_store.delete_hv_position(int(position_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def hv_journal_endpoint():
+    """Positions + per-day roll-ups + totals. `days` = how far back
+    (calendar days, default 30; 0 = everything). All P&L is derived here
+    from the raw fills -- nothing is stored."""
+    try:
+        days_back = int(request.args.get("days", 30))
+    except ValueError:
+        return jsonify({"error": "days must be an integer"}), 400
+    cfg = _hv_config()
+    today = today_ist()
+    from_date = today - timedelta(days=days_back) if days_back > 0 else datetime(2000, 1, 1).date()
+    try:
+        journal = build_journal(db_store.list_hv_positions(from_date), cfg)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    for p in journal["positions"]:
+        s = p["summary"]
+        if s["open_qty"] and s["avg_entry"]:
+            s["break_even"] = break_even_price(p["side"], s["avg_entry"], s["open_qty"])
+            s["targets"] = {str(t): target_price(p["side"], s["avg_entry"], s["open_qty"], t)
+                            for t in cfg.target_pcts}
+    today_summary = next((d for d in journal["days"] if d["date"] == today.isoformat()), None)
+    journal["today"] = today.isoformat()
+    journal["today_summary"] = today_summary
+    return jsonify(journal)
+
+
 _ROUTES = {
     "": home,
     "cost-basis": cost_basis_page,
@@ -485,6 +727,7 @@ _ROUTES = {
     "performance-log-widget-js": performance_log_widget_js,
     "breakout": breakout_page,
     "find-atrx-opps": find_atrx_opps_page,
+    "high-volatility": high_volatility_page,
     "login": login,
     "callback": callback,
     "status": status_endpoint,
@@ -506,6 +749,16 @@ _ROUTES = {
     "breakout-config": breakout_config_endpoint,
     "run-breakout": run_breakout_endpoint,
     "breakout-stats": breakout_stats_endpoint,
+    "hv-settings": hv_settings_endpoint,
+    "hv-candidates": hv_candidates_endpoint,
+    "hv-live": hv_live_endpoint,
+    "hv-day": hv_day_endpoint,
+    "hv-position-open": hv_position_open_endpoint,
+    "hv-fill": hv_fill_endpoint,
+    "hv-fill-delete": hv_fill_delete_endpoint,
+    "hv-position-update": hv_position_update_endpoint,
+    "hv-position-delete": hv_position_delete_endpoint,
+    "hv-journal": hv_journal_endpoint,
 }
 
 

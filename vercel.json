@@ -32,7 +32,18 @@
     { "source": "/api/trade-quotes", "destination": "/api/index?r=trade-quotes" },
     { "source": "/api/breakout-config", "destination": "/api/index?r=breakout-config" },
     { "source": "/api/run-breakout", "destination": "/api/index?r=run-breakout" },
-    { "source": "/api/breakout-stats", "destination": "/api/index?r=breakout-stats" }
+    { "source": "/api/breakout-stats", "destination": "/api/index?r=breakout-stats" },
+    { "source": "/high-volatility", "destination": "/api/index?r=high-volatility" },
+    { "source": "/api/hv-settings", "destination": "/api/index?r=hv-settings" },
+    { "source": "/api/hv-candidates", "destination": "/api/index?r=hv-candidates" },
+    { "source": "/api/hv-live", "destination": "/api/index?r=hv-live" },
+    { "source": "/api/hv-day", "destination": "/api/index?r=hv-day" },
+    { "source": "/api/hv-position-open", "destination": "/api/index?r=hv-position-open" },
+    { "source": "/api/hv-fill", "destination": "/api/index?r=hv-fill" },
+    { "source": "/api/hv-fill-delete", "destination": "/api/index?r=hv-fill-delete" },
+    { "source": "/api/hv-position-update", "destination": "/api/index?r=hv-position-update" },
+    { "source": "/api/hv-position-delete", "destination": "/api/index?r=hv-position-delete" },
+    { "source": "/api/hv-journal", "destination": "/api/index?r=hv-journal" }
   ],
   "crons": [
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }

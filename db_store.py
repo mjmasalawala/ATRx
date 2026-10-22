@@ -37,6 +37,13 @@ INSTRUMENTS_TABLE = "instruments"
 
 PERFORMANCE_LOG_TABLE = "performance_log"
 
+HV_ATR_SNAPSHOT_TABLE = "hv_atr_snapshot"
+HV_SETTINGS_TABLE = "hv_settings"
+HV_DAY_TABLE = "hv_day"
+HV_FOCUS_TABLE = "hv_focus"
+HV_POSITIONS_TABLE = "hv_positions"
+HV_FILLS_TABLE = "hv_fills"
+
 BREAKOUT_CONFIG_TABLE = "breakout_config"
 BREAKOUT_SIGNAL_EVENTS_TABLE = "breakout_signal_events"
 _BREAKOUT_HORIZONS = (3, 5, 10, 20)  # must match breakout_config.BreakoutConfig.forward_horizons
@@ -524,3 +531,251 @@ def load_signal_events(signal_config_hash: str, universe_tier: str | None = None
             params,
         )
         return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# High Volatility page (scripts/012_create_high_volatility_tables.sql)
+# ---------------------------------------------------------------------------
+
+def upsert_atr_snapshot(rows: list[dict], tier: str, run_date) -> int:
+    """Overwrites the latest-ATR% row for each symbol (one row per symbol,
+    ever -- this table never grows). rows: [{symbol, atr_pct, atr_percentile_rank,
+    price, atr_period}]. Cached intraday_stats are deliberately left alone;
+    they're keyed by their own date and refreshed when stale."""
+    if not rows:
+        return 0
+    with get_conn() as conn, conn.cursor() as cur:
+        for r in rows:
+            cur.execute(
+                f"""
+                INSERT INTO {HV_ATR_SNAPSHOT_TABLE}
+                    (symbol, tier, atr_pct, atr_percentile_rank, price, atr_period, run_date, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+                ON CONFLICT (symbol) DO UPDATE SET
+                    tier = EXCLUDED.tier, atr_pct = EXCLUDED.atr_pct,
+                    atr_percentile_rank = EXCLUDED.atr_percentile_rank,
+                    price = EXCLUDED.price, atr_period = EXCLUDED.atr_period,
+                    run_date = EXCLUDED.run_date, updated_at = now()
+                """,
+                [r["symbol"], tier, r["atr_pct"], r.get("atr_percentile_rank"),
+                 r.get("price"), r.get("atr_period"), run_date],
+            )
+        conn.commit()
+    return len(rows)
+
+
+def load_atr_snapshot() -> list[dict]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT symbol, tier, atr_pct, atr_percentile_rank, price, atr_period,
+                   run_date, intraday_stats, intraday_stats_date
+            FROM {HV_ATR_SNAPSHOT_TABLE}
+            ORDER BY atr_pct DESC
+            """
+        )
+        return [
+            {"symbol": sym, "tier": tier, "atr_pct": float(atr), "atr_percentile_rank":
+             float(rank) if rank is not None else None,
+             "price": float(price) if price is not None else None, "atr_period": period,
+             "run_date": run_date.isoformat(), "intraday_stats": stats,
+             "intraday_stats_date": stats_date.isoformat() if stats_date else None}
+            for sym, tier, atr, rank, price, period, run_date, stats, stats_date in cur.fetchall()
+        ]
+
+
+def save_intraday_stats(symbol: str, stats: dict, stats_date) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {HV_ATR_SNAPSHOT_TABLE}
+            SET intraday_stats = %s, intraday_stats_date = %s
+            WHERE symbol = %s
+            """,
+            [Json(stats), stats_date, symbol],
+        )
+        conn.commit()
+
+
+def load_hv_settings() -> dict | None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT params FROM {HV_SETTINGS_TABLE} WHERE id = 1")
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def save_hv_settings(params: dict) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {HV_SETTINGS_TABLE} (id, params, updated_at)
+            VALUES (1, %s, now())
+            ON CONFLICT (id) DO UPDATE SET params = EXCLUDED.params, updated_at = now()
+            """,
+            [Json(params)],
+        )
+        conn.commit()
+
+
+def load_hv_day(trade_date) -> dict:
+    """The day's pre-open notes plus its focus list."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT gift_nifty, note FROM {HV_DAY_TABLE} WHERE trade_date = %s", [trade_date]
+        )
+        row = cur.fetchone()
+        cur.execute(
+            f"""
+            SELECT symbol, bias, tags, note, pre_meta
+            FROM {HV_FOCUS_TABLE} WHERE trade_date = %s ORDER BY updated_at, symbol
+            """,
+            [trade_date],
+        )
+        focus = [{"symbol": s, "bias": b, "tags": t, "note": n, "pre_meta": m}
+                 for s, b, t, n, m in cur.fetchall()]
+    return {
+        "trade_date": trade_date.isoformat(),
+        "gift_nifty": float(row[0]) if row and row[0] is not None else None,
+        "note": row[1] if row else None,
+        "focus": focus,
+    }
+
+
+def save_hv_day(trade_date, gift_nifty, note, focus: list[dict]) -> None:
+    """Replaces the day's notes and its whole focus list (the page always
+    sends the complete list, so removing a ticker removes its row)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {HV_DAY_TABLE} (trade_date, gift_nifty, note, updated_at)
+            VALUES (%s, %s, %s, now())
+            ON CONFLICT (trade_date) DO UPDATE SET
+                gift_nifty = EXCLUDED.gift_nifty, note = EXCLUDED.note, updated_at = now()
+            """,
+            [trade_date, gift_nifty, note],
+        )
+        cur.execute(f"DELETE FROM {HV_FOCUS_TABLE} WHERE trade_date = %s", [trade_date])
+        for f in focus:
+            cur.execute(
+                f"""
+                INSERT INTO {HV_FOCUS_TABLE} (trade_date, symbol, bias, tags, note, pre_meta)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                [trade_date, f["symbol"], f.get("bias") or "long", Json(f.get("tags") or []),
+                 f.get("note"), Json(f["pre_meta"]) if f.get("pre_meta") is not None else None],
+            )
+        conn.commit()
+
+
+def create_hv_position(trade_date, symbol: str, side: str, qty: int, price, filled_at=None,
+                       setup_tag: str | None = None, note: str | None = None,
+                       signal_meta: dict | None = None) -> int:
+    """Opens a position together with its first entry fill."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {HV_POSITIONS_TABLE} (trade_date, symbol, side, setup_tag, note, signal_meta)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            """,
+            [trade_date, symbol, side, setup_tag, note,
+             Json(signal_meta) if signal_meta is not None else None],
+        )
+        position_id = cur.fetchone()[0]
+        cur.execute(
+            f"""
+            INSERT INTO {HV_FILLS_TABLE} (position_id, kind, qty, price, filled_at)
+            VALUES (%s, 'entry', %s, %s, COALESCE(%s::timestamptz, now()))
+            """,
+            [position_id, qty, price, filled_at],
+        )
+        conn.commit()
+        return position_id
+
+
+def add_hv_fill(position_id: int, kind: str, qty: int, price, filled_at=None) -> int:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {HV_FILLS_TABLE} (position_id, kind, qty, price, filled_at)
+            VALUES (%s, %s, %s, %s, COALESCE(%s::timestamptz, now())) RETURNING id
+            """,
+            [position_id, kind, qty, price, filled_at],
+        )
+        fill_id = cur.fetchone()[0]
+        conn.commit()
+        return fill_id
+
+
+def update_hv_position(position_id: int, setup_tag, note, execution_rating) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {HV_POSITIONS_TABLE}
+            SET setup_tag = %s, note = %s, execution_rating = %s
+            WHERE id = %s
+            """,
+            [setup_tag, note, execution_rating, position_id],
+        )
+        conn.commit()
+
+
+def delete_hv_position(position_id: int) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {HV_POSITIONS_TABLE} WHERE id = %s", [position_id])
+        conn.commit()
+
+
+def delete_hv_fill(fill_id: int) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {HV_FILLS_TABLE} WHERE id = %s", [fill_id])
+        conn.commit()
+
+
+def list_hv_positions(from_date, to_date=None) -> list[dict]:
+    """Positions (with all their fills) from from_date onward, newest first."""
+    query = f"""
+        SELECT id, trade_date, symbol, side, setup_tag, note, execution_rating, signal_meta, created_at
+        FROM {HV_POSITIONS_TABLE} WHERE trade_date >= %s
+    """
+    params = [from_date]
+    if to_date is not None:
+        query += " AND trade_date <= %s"
+        params.append(to_date)
+    query += " ORDER BY trade_date DESC, id DESC"
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        ids = [r[0] for r in rows]
+        fills_by_position: dict[int, list[dict]] = {}
+        if ids:
+            cur.execute(
+                f"""
+                SELECT id, position_id, kind, qty, price, filled_at
+                FROM {HV_FILLS_TABLE} WHERE position_id = ANY(%s) ORDER BY filled_at, id
+                """,
+                [ids],
+            )
+            for fid, pid, kind, qty, price, filled_at in cur.fetchall():
+                fills_by_position.setdefault(pid, []).append({
+                    "id": fid, "kind": kind, "qty": qty, "price": float(price),
+                    "filled_at": filled_at.isoformat(),
+                })
+
+    return [
+        {"id": pid, "trade_date": d.isoformat(), "symbol": sym, "side": side,
+         "setup_tag": tag, "note": note, "execution_rating": rating, "signal_meta": meta,
+         "created_at": created.isoformat(), "fills": fills_by_position.get(pid, [])}
+        for pid, d, sym, side, tag, note, rating, meta, created in rows
+    ]
+
+
+def get_hv_position(position_id: int) -> dict | None:
+    """One position with its fills (same shape as list_hv_positions rows)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT trade_date FROM {HV_POSITIONS_TABLE} WHERE id = %s", [position_id])
+        row = cur.fetchone()
+    if not row:
+        return None
+    matches = [p for p in list_hv_positions(row[0], row[0]) if p["id"] == position_id]
+    return matches[0] if matches else None

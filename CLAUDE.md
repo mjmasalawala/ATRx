@@ -1,6 +1,6 @@
 # ATRx — instructions for Claude Code
 
-**Before exploring this codebase, read `requirements/README.md` and the relevant doc(s) it points to.** This repo has four modules, each with a concise reference doc in `requirements/`: `atrx-screener.md`, `cost-basis.md`, `kite-login-infra.md`, `performance-log.md`. Each doc lists, per source file: purpose, key function signatures, and non-obvious design decisions/gotchas. They were written specifically so a new session doesn't have to re-read the whole repo (source files, `db_store.py`, `api/index.py`'s route table, the HTML pages) just to get oriented — a prior session already paid that cost once and wrote it down.
+**Before exploring this codebase, read `requirements/README.md` and the relevant doc(s) it points to.** This repo has modules, each with a concise reference doc in `requirements/`: `atrx-screener.md`, `cost-basis.md`, `kite-login-infra.md`, `performance-log.md`. Each doc lists, per source file: purpose, key function signatures, and non-obvious design decisions/gotchas. They were written specifically so a new session doesn't have to re-read the whole repo (source files, `db_store.py`, `api/index.py`'s route table, the HTML pages) just to get oriented — a prior session already paid that cost once and wrote it down.
 
 Use the docs as your primary source of context. Only read the actual source files when:
 - the docs don't cover what you need in enough detail,
