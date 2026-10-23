@@ -37,6 +37,7 @@
     { "source": "/api/hv-settings", "destination": "/api/index?r=hv-settings" },
     { "source": "/api/hv-candidates", "destination": "/api/index?r=hv-candidates" },
     { "source": "/api/hv-live", "destination": "/api/index?r=hv-live" },
+    { "source": "/api/hv-gift-nifty", "destination": "/api/index?r=hv-gift-nifty" },
     { "source": "/api/hv-day", "destination": "/api/index?r=hv-day" },
     { "source": "/api/hv-position-open", "destination": "/api/index?r=hv-position-open" },
     { "source": "/api/hv-fill", "destination": "/api/index?r=hv-fill" },

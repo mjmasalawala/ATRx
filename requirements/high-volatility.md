@@ -22,7 +22,7 @@ A page (`/high-volatility`, `high_volatility.html`) that supports one specific, 
 - `hv_screener.py` — Kite/DB plumbing: `build_candidates(kite, cfg, extras, force)`, `fetch_5min`, `get_quotes`, `normalise_quote`, `today_ist()`. Stops fetching new candles after ~42 s (Vercel's 60 s cap) and returns the rest in `pending`; stats are cached per symbol on `hv_atr_snapshot.intraday_stats` for the day (cache is invalid if `swing_pct`/`first_hour_minutes` changed), so pressing "Build watchlist" again continues where it stopped. Extra tickers not in the snapshot are never cached.
 - `db_store.py` — `upsert_atr_snapshot`, `load_atr_snapshot`, `save_intraday_stats`, `load_hv_settings`/`save_hv_settings`, `load_hv_day`/`save_hv_day` (replaces the day's whole focus list), `create_hv_position`, `add_hv_fill`, `update_hv_position`, `delete_hv_position`, `delete_hv_fill`, `list_hv_positions(from, to=None)`, `get_hv_position`.
 - `screener.py` — `run_screener(..., save_atr_snapshot=False)`; only `/api/run-screener` (the manual Find ATRx Opps / ATRx Screener runs) passes `True`. The 25-minute alert cron does not. **The snapshot save is skipped during NSE market hours** (9:15–15:30 IST weekdays) because Kite's daily history then includes today's partial candle, which would skew ATR%.
-- `api/index.py` — routes `hv-settings`, `hv-candidates`, `hv-live`, `hv-day`, `hv-position-open`, `hv-fill`, `hv-fill-delete`, `hv-position-update`, `hv-position-delete`, `hv-journal`, plus the page route `high-volatility`. `hv-position-open` returns 409 if the ticker already has an open position today (use Add/Exit); `hv-fill` rejects exits larger than the open quantity and entries on a closed position.
+- `api/index.py` — routes `hv-settings`, `hv-candidates`, `hv-live`, `hv-gift-nifty`, `hv-day`, `hv-position-open`, `hv-fill`, `hv-fill-delete`, `hv-position-update`, `hv-position-delete`, `hv-journal`, plus the page route `high-volatility`. `hv-position-open` returns 409 if the ticker already has an open position today (use Add/Exit); `hv-fill` rejects exits larger than the open quantity and entries on a closed position.
 
 ## The strategy this serves
 
@@ -37,6 +37,8 @@ A page (`/high-volatility`, `high_volatility.html`) that supports one specific, 
 
 1. **Morning:** the user runs *Find ATRx Opps* as usual. `screener.py`'s `_run_screener` already computes `atr_pct` and `atr_percentile_rank` for every symbol in pass 1; the change is to also **upsert them into `hv_atr_snapshot`** (non-fatal, like `_persist_config_used`). Only the **latest** value per symbol is kept (one row per symbol, ~240 rows) — deliberate, to avoid an ever-growing table. History is not needed: the ATR%/rank at selection time is copied into the trade's `signal_meta` / focus `pre_meta` instead.
 2. **Pre-open tab:** `GET /api/hv-candidates` loads the snapshot, shortlists the top N by ATR% (after turnover and circuit-band filters), fetches **5-minute candles** (~25 calendar days) for the shortlist only, derives first-hour/swing statistics, caches them on the snapshot row (`intraday_stats`, `intraday_stats_date`) so reloads are instant, quotes the shortlist (`kite.quote`) for the pre-open indicative gap, and returns a ranked list with a "why" column. Extra tickers typed by the user (free text NSE tickers) are included, computed on the fly and not persisted. ATR% for those is derived from the 5-minute candles aggregated to daily bars.
+   - **GIFT Nifty:** `GET /api/hv-gift-nifty` (`hv_screener.fetch_gift_nifty`) reads the latest print from the `__NEXT_DATA__` JSON embedded in Groww's GIFT Nifty page (`groww.in/indices/global-indices/sgx-nifty`, no login, undocumented so it may change). The Pre-open tab auto-fills the field when it's empty and has a "Fetch live" button; typing by hand still works if the feed is down.
+
 3. **Live tab:** the browser polls `GET /api/hv-live?symbols=...` **every 60 s** (configurable) for the focus list. `kite.quote` also returns the day's high/low so a spike between polls is still captured. Polling and browser alerts only run while the tab is open (Vercel cannot hold a background process).
 4. **Journal tab:** trades are logged with Bought / Sold buttons (price pre-filled from the live quote, editable; qty pre-filled from ₹35,000).
 
@@ -69,7 +71,7 @@ Per the repo rule, `db_store.py` only reads/writes rows; it never creates or alt
 
 ## API routes (each has a `_ROUTES` entry + `vercel.json` rewrite)
 
-`/high-volatility` (page), `hv-settings`, `hv-candidates`, `hv-live`, `hv-day` (GET/POST: notes + focus list), `hv-position-open`, `hv-fill`, `hv-fill-delete`, `hv-position-update`, `hv-position-delete`, `hv-journal` (positions, per-day summaries, totals for the dashboard).
+`/high-volatility` (page), `hv-settings`, `hv-candidates`, `hv-live`, `hv-gift-nifty`, `hv-day` (GET/POST: notes + focus list), `hv-position-open`, `hv-fill`, `hv-fill-delete`, `hv-position-update`, `hv-position-delete`, `hv-journal` (positions, per-day summaries, totals for the dashboard).
 
 ## Page behaviour (`high_volatility.html`)
 

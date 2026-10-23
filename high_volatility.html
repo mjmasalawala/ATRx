@@ -195,6 +195,8 @@
       <label class="field">GIFT Nifty (now)
         <input id="giftNifty" type="number" step="0.05" style="width:140px" placeholder="e.g. 25840">
       </label>
+      <button id="giftFetch" class="secondary" type="button" style="margin-bottom:2px">Fetch live</button>
+      <div id="giftAsOf" class="dim" style="padding-bottom:8px;font-size:12px"></div>
       <div id="impliedGap" class="num" style="padding-bottom:8px;font-size:13px"></div>
       <label class="field grow">Day note
         <input id="dayNote" type="text" placeholder="Anything you want to remember about today's market" style="font-family:'Space Grotesk',sans-serif">
@@ -408,7 +410,19 @@ async function loadDay() {
   $("giftNifty").value = DAY.gift_nifty ?? "";
   $("dayNote").value = DAY.note ?? "";
   updateImpliedGap();
+  if ($("giftNifty").value === "") fetchGift(true);
 }
+async function fetchGift(quiet) {
+  try {
+    const g = await api("/api/hv-gift-nifty");
+    $("giftNifty").value = g.price;
+    $("giftAsOf").textContent = "as of " + g.as_of.slice(11, 16) + " IST";
+    updateImpliedGap(); scheduleSave();
+  } catch (e) {
+    if (!quiet) banner("Could not fetch GIFT Nifty -- type it in by hand. (" + e.message + ")", "info");
+  }
+}
+$("giftFetch").addEventListener("click", () => fetchGift(false));
 function rowState(sym) {
   if (!ROWS[sym]) ROWS[sym] = { focus: false, bias: "long", tags: [], note: "", pre_meta: null };
   return ROWS[sym];

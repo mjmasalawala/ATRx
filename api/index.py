@@ -32,7 +32,7 @@ from config import CONFIG
 from cost_basis import replay as replay_cost_basis
 from hv_config import CHARGES, config_from_dict as hv_config_from_dict
 from hv_journal import break_even_price, build_journal, position_summary, target_price
-from hv_screener import build_candidates as hv_build_candidates, get_quotes as hv_get_quotes, today_ist
+from hv_screener import build_candidates as hv_build_candidates, fetch_gift_nifty, get_quotes as hv_get_quotes, today_ist
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
 from screener import run_screener, run_screener_symbol
 from token_store import load_access_token, save_access_token
@@ -570,6 +570,13 @@ def hv_live_endpoint():
     return jsonify({"quotes": quotes, "fetched_at": datetime.now().astimezone().isoformat()})
 
 
+def hv_gift_nifty_endpoint():
+    try:
+        return jsonify(fetch_gift_nifty())
+    except Exception as e:
+        return jsonify({"error": f"Could not fetch GIFT Nifty: {e}"}), 502
+
+
 def hv_day_endpoint():
     if request.method == "POST":
         body = request.get_json(silent=True) or {}
@@ -752,6 +759,7 @@ _ROUTES = {
     "hv-settings": hv_settings_endpoint,
     "hv-candidates": hv_candidates_endpoint,
     "hv-live": hv_live_endpoint,
+    "hv-gift-nifty": hv_gift_nifty_endpoint,
     "hv-day": hv_day_endpoint,
     "hv-position-open": hv_position_open_endpoint,
     "hv-fill": hv_fill_endpoint,

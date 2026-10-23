@@ -7,12 +7,15 @@ ranking themselves live in hv_ranking.py (pure, unit-tested).
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import time as time_module
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import requests
 from kiteconnect import KiteConnect
 
 import db_store
@@ -53,6 +56,30 @@ def fetch_5min(kite: KiteConnect, token: int, calendar_days: int) -> pd.DataFram
         return None
     df = df.rename(columns={"date": "timestamp"})
     return df[["timestamp", "open", "high", "low", "close", "volume"]]
+
+
+GIFT_NIFTY_URL = "https://groww.in/indices/global-indices/sgx-nifty"
+
+
+def fetch_gift_nifty() -> dict:
+    """Latest GIFT Nifty print, read from the data Groww embeds in its GIFT
+    Nifty page (__NEXT_DATA__; no login, but undocumented so it may change).
+    Returns {price, as_of (ISO, IST), day_open, day_high, day_low, prev_close}."""
+    resp = requests.get(GIFT_NIFTY_URL, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', resp.text, re.S)
+    if not match:
+        raise RuntimeError("GIFT Nifty page layout changed (no embedded data)")
+    try:
+        p = json.loads(match.group(1))["props"]["pageProps"]["globalIndicesData"]["priceData"]
+        return {
+            "price": p["value"],
+            "as_of": datetime.fromtimestamp(p["tsInMillis"], IST).isoformat(),
+            "day_open": p.get("open"), "day_high": p.get("high"), "day_low": p.get("low"),
+            "prev_close": p.get("close"),
+        }
+    except (KeyError, TypeError) as e:
+        raise RuntimeError(f"GIFT Nifty page layout changed (missing {e})")
 
 
 def normalise_quote(raw: dict) -> dict:
