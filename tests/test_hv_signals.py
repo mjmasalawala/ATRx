@@ -102,11 +102,11 @@ def test_entry_lapses_after_two_bars():
     assert ev["metrics"]["confirm_bars_ago"] >= 2
 
 
-def test_no_entries_before_920_or_after_1015():
+def test_no_entries_before_920_or_after_1430():
     cfg = HVConfig()
     early = evaluate(_dip_day()[:4], CTX, None, None, cfg, datetime(2026, 10, 22, 9, 19, 5))
     assert early["stage"] == "watching" and "09:20" in early["reasons"][0]
-    late = evaluate(_dip_day(), CTX, None, None, cfg, datetime(2026, 10, 22, 10, 16))
+    late = evaluate(_dip_day(), CTX, None, None, cfg, datetime(2026, 10, 22, 14, 31))
     assert late["stage"] == "closed"
 
 
@@ -221,7 +221,7 @@ def test_manage_position_prompts():
 
     late = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 10, 12))
     assert any("Time stop" in w for w in late["warnings"]) is False  # +1R, so no time stop
-    flat = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 10, 45))
+    flat = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 15, 0))
     assert any("exit everything" in w for w in flat["warnings"])
 
 

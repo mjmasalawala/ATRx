@@ -74,7 +74,7 @@ def test_giving_back_half_the_peak_stops_the_day():
 def test_rule_break_and_flat_time_lock_the_day():
     cfg = HVConfig()
     assert day_state(_positions(_pos("A", 100, 101, rule_broken=True)), cfg, NOW)["lockout"] == "a rule was broken today"
-    assert "session over" in day_state([], cfg, datetime(2026, 10, 22, 10, 45))["lockout"]
+    assert "session over" in day_state([], cfg, datetime(2026, 10, 22, 15, 0))["lockout"]
 
 
 def test_open_positions_and_open_risk_limit_entries():

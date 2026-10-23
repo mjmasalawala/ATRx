@@ -119,7 +119,7 @@ def build_context(history_5m: list[dict], today: date, sessions: int = 10) -> di
     """Pre-open context from completed sessions of 5-minute candles:
     previous day's high/low/close, daily ATR(14), each 5-minute slot's
     normal volume (median over the last `sessions` days), the average
-    traded value of a first-hour 5-minute bar (liquidity cap) and the last
+    traded value of each 5-minute slot (liquidity cap) and the last
     closes of the previous session (so RSI(5) works from 9:20)."""
     by_day: dict[date, list[dict]] = {}
     for b in history_5m:
@@ -144,10 +144,12 @@ def build_context(history_5m: list[dict], today: date, sessions: int = 10) -> di
     recent = days[-sessions:]
     slots: dict[str, list[float]] = {}
     fh_values = []
+    value_slots: dict[str, list[float]] = {}
     for d in recent:
         for b in by_day[d]:
             key = b["ts"].strftime("%H:%M")
             slots.setdefault(key, []).append(float(b["volume"]))
+            value_slots.setdefault(key, []).append(b["volume"] * b["close"])
             if b["ts"].time() < time(10, 15):
                 fh_values.append(b["volume"] * b["close"])
 
@@ -161,6 +163,7 @@ def build_context(history_5m: list[dict], today: date, sessions: int = 10) -> di
         "prev_high": daily[-1]["high"], "prev_low": daily[-1]["low"], "prev_close": daily[-1]["close"],
         "atr": round(atr, 4),
         "vol_baseline": {k: median(v) for k, v in slots.items()},
+        "value_baseline": {k: round(median(v), 2) for k, v in value_slots.items()},
         "avg_5m_value": round(sum(fh_values) / len(fh_values), 2) if fh_values else 0.0,
         "prev_closes_5m": [b["close"] for b in last[-10:]],
         "sessions": len(days),
@@ -437,8 +440,12 @@ def evaluate(bars_1m: list[dict], ctx: dict | None, quote: dict | None, nifty: d
         stop = floor_tick(flush["low"] - buffer)
         target = round_tick(vw)
         cost = entry * cfg.cost_pct / 100
+        # liquidity cap: this time of day's normal 5-minute traded value (the
+        # midday lull is thinner than the open), else the first-hour average
+        slot = bars[ci]["ts"].replace(minute=bars[ci]["ts"].minute - bars[ci]["ts"].minute % 5).strftime("%H:%M")
+        slot_value = (ctx.get("value_baseline") or {}).get(slot) or ctx.get("avg_5m_value") or 0.0
         size = size_trade(entry, stop, cfg, (one_r if one_r is not None else cfg.one_r) * size_mult,
-                          ctx.get("avg_5m_value") or 0.0, exposure_left)
+                          slot_value, exposure_left)
         rps = size["risk_per_share"]
         net_rr = (target - entry - cost) / rps if rps > 0 else 0.0
         fails = []
