@@ -545,21 +545,22 @@ def upsert_atr_snapshot(rows: list[dict], tier: str, run_date) -> int:
     if not rows:
         return 0
     with get_conn() as conn, conn.cursor() as cur:
-        for r in rows:
-            cur.execute(
-                f"""
-                INSERT INTO {HV_ATR_SNAPSHOT_TABLE}
-                    (symbol, tier, atr_pct, atr_percentile_rank, price, atr_period, run_date, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, now())
-                ON CONFLICT (symbol) DO UPDATE SET
-                    tier = EXCLUDED.tier, atr_pct = EXCLUDED.atr_pct,
-                    atr_percentile_rank = EXCLUDED.atr_percentile_rank,
-                    price = EXCLUDED.price, atr_period = EXCLUDED.atr_period,
-                    run_date = EXCLUDED.run_date, updated_at = now()
-                """,
-                [r["symbol"], tier, r["atr_pct"], r.get("atr_percentile_rank"),
-                 r.get("price"), r.get("atr_period"), run_date],
-            )
+        # executemany pipelines the statements: one network round trip for the
+        # whole batch instead of one per symbol (matters on a 60s function).
+        cur.executemany(
+            f"""
+            INSERT INTO {HV_ATR_SNAPSHOT_TABLE}
+                (symbol, tier, atr_pct, atr_percentile_rank, price, atr_period, run_date, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, now())
+            ON CONFLICT (symbol) DO UPDATE SET
+                tier = EXCLUDED.tier, atr_pct = EXCLUDED.atr_pct,
+                atr_percentile_rank = EXCLUDED.atr_percentile_rank,
+                price = EXCLUDED.price, atr_period = EXCLUDED.atr_period,
+                run_date = EXCLUDED.run_date, updated_at = now()
+            """,
+            [[r["symbol"], tier, r["atr_pct"], r.get("atr_percentile_rank"),
+              r.get("price"), r.get("atr_period"), run_date] for r in rows],
+        )
         conn.commit()
     return len(rows)
 
