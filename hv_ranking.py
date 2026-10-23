@@ -176,7 +176,11 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
         else:
             atr = r.get("atr_pct") if r.get("atr_pct") is not None else stats.get("atr_pct_5m")
             r["atr_pct"] = atr
-            if atr is not None and atr < cfg.min_atr_pct:
+            # Tickers typed in by hand are never filtered: the user only adds
+            # one when they expect it to be volatile today.
+            if r.get("manual"):
+                pass
+            elif atr is not None and atr < cfg.min_atr_pct:
                 reason = f"ATR% {atr:.2f} below {cfg.min_atr_pct}"
             elif stats["avg_turnover_cr"] < cfg.min_avg_turnover_cr:
                 reason = f"avg turnover {stats['avg_turnover_cr']} cr below {cfg.min_avg_turnover_cr}"
@@ -184,7 +188,7 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
         if reason is None and prev_close and upper:
             band = (upper - prev_close) / prev_close * 100
             r["circuit_band_pct"] = round(band, 1)
-            if band < cfg.min_circuit_band_pct - 0.01:
+            if band < cfg.min_circuit_band_pct - 0.01 and not r.get("manual"):
                 reason = f"price band only {band:.0f}%"
         if reason:
             excluded.append({"symbol": r["symbol"], "reason": reason})
@@ -218,7 +222,7 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
     for i, r in enumerate(eligible):
         s = r["stats"]
         score = sum(weights[k] * comps[k][i] for k in weights) / total_w * 100
-        why = [
+        why = (["added by you (filters skipped)"] if r.get("manual") else []) + [
             f"1st-hour range avg {s['avg_fh_range_pct']}%",
             f"2+ up-swings ≥{cfg.swing_pct}% on {s['two_up_days_pct']:.0f}% of days, "
             f"2+ down-swings on {s['two_down_days_pct']:.0f}%",

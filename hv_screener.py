@@ -137,7 +137,8 @@ def build_candidates(kite: KiteConnect, cfg: HVConfig, extras: list[str], force:
              "row": r} for r in shortlist]
     shortlisted = {w["symbol"] for w in work}
     for sym in extras:
-        if sym in shortlisted:
+        if sym in shortlisted:  # already there on ATR%; mark it as hand-picked so filters skip it
+            next(w for w in work if w["symbol"] == sym)["manual"] = True
             continue
         snap = by_symbol.get(sym)  # typed in by hand but already in the snapshot: use its ATR%
         work.append({"symbol": sym, "tier": snap["tier"] if snap else "manual",
