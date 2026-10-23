@@ -30,9 +30,13 @@ from breakout_screener import run_breakout_screener
 from breakout_stats import summarize as summarize_breakout_events
 from config import CONFIG
 from cost_basis import replay as replay_cost_basis
-from hv_config import CHARGES, config_from_dict as hv_config_from_dict
+from hv_config import CHARGES, RISK_FIELDS as HV_RISK_FIELDS, config_from_dict as hv_config_from_dict
 from hv_journal import break_even_price, build_journal, position_summary, target_price
-from hv_screener import build_candidates as hv_build_candidates, fetch_gift_nifty, get_quotes as hv_get_quotes, today_ist
+from hv_live import (live_snapshot as hv_live_snapshot, now_ist, replay as hv_replay,
+                     risk_snapshot as hv_risk_snapshot, score_day as hv_score_day, start_watch as hv_start_watch)
+from hv_risk import entry_blockers as hv_entry_blockers, position_r
+from hv_screener import build_candidates as hv_build_candidates, fetch_gift_nifty, today_ist
+from hv_signals import signal_summary as hv_signal_summary
 from kite_web_auth import build_login_url, exchange_request_token, get_kite_session_from_token
 from screener import run_screener, run_screener_symbol
 from token_store import load_access_token, save_access_token
@@ -509,9 +513,12 @@ def _kite_or_error():
     return get_kite_session_from_token(token), None
 
 
-def _parse_symbols(raw: str) -> list[str]:
+def _parse_symbols(raw) -> list[str]:
+    """Comma-separated string or a list of symbols -> unique upper-case list."""
     seen, out = set(), []
-    for s in (raw or "").split(","):
+    parts = raw if isinstance(raw, list) else (raw or "").split(",")
+    for s in parts:
+        s = str(s)
         s = s.strip().upper()
         if s and s not in seen:
             seen.add(s)
@@ -524,6 +531,12 @@ def hv_settings_endpoint():
     if request.method == "POST":
         body = request.get_json(silent=True) or {}
         merged = cfg.to_dict()
+        now = now_ist()
+        in_session = now.weekday() < 5 and (9, 15) <= (now.hour, now.minute) < (15, 30)
+        changed = [k for k in HV_RISK_FIELDS if k in body and hv_config_from_dict({**merged, k: body[k]}).to_dict()[k] != merged[k]]
+        if in_session and changed:
+            return jsonify({"error": "Risk limits are locked during the session (9:15-15:30). "
+                                     f"Change {', '.join(changed)} after the close."}), 409
         merged.update({k: v for k, v in body.items() if k in merged})
         try:
             cfg = hv_config_from_dict(merged)
@@ -532,7 +545,8 @@ def hv_settings_endpoint():
             return jsonify({"error": f"Invalid setting: {e}"}), 400
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-    return jsonify({"settings": cfg.to_dict(), "charges": CHARGES})
+    return jsonify({"settings": cfg.to_dict(), "charges": CHARGES, "risk_fields": list(HV_RISK_FIELDS),
+                    "one_r": cfg.one_r, "daily_loss_limit": cfg.daily_loss_limit})
 
 
 def hv_candidates_endpoint():
@@ -557,17 +571,92 @@ def hv_candidates_endpoint():
 
 
 def hv_live_endpoint():
+    """Quotes, each card's stage / checklist / suggestion, and the risk
+    state. `symbols` = the focus list, `strip` = shortlist stocks scanned
+    for the "Also setting up" strip."""
     symbols = _parse_symbols(request.args.get("symbols"))
-    if not symbols:
-        return jsonify({"quotes": {}})
+    strip = _parse_symbols(request.args.get("strip"))
+    if not symbols and not strip:
+        return jsonify({"quotes": {}, "cards": {}})
     kite, err = _kite_or_error()
     if err:
         return err
     try:
-        quotes = hv_get_quotes(kite, symbols)
+        result = hv_live_snapshot(kite, _hv_config(), symbols, strip)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}), 500
+    result["fetched_at"] = datetime.now().astimezone().isoformat()
+    return jsonify(result)
+
+
+def hv_watch_start_endpoint():
+    """Pre-open context (levels, ATR, time-of-day volume) for the watched stocks."""
+    symbols = _parse_symbols((request.get_json(silent=True) or {}).get("symbols"))
+    if not symbols:
+        return jsonify({"error": "symbols is required"}), 400
+    kite, err = _kite_or_error()
+    if err:
+        return err
+    try:
+        return jsonify(hv_start_watch(kite, _hv_config(), symbols))
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+def hv_signals_endpoint():
+    """GET: stored signals over `days` (default 30, 0 = all) with the
+    grouped hit-rate summary; `source` = live|replay narrows it. POST:
+    scores the given day's unscored live signals first (needs Kite)."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        kite, err = _kite_or_error()
+        if err:
+            return err
+        try:
+            day = datetime.strptime(body["date"], "%Y-%m-%d").date() if body.get("date") else today_ist()
+            return jsonify(hv_score_day(kite, _hv_config(), day))
+        except Exception as e:
+            return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    try:
+        days_back = int(request.args.get("days", 30))
+    except ValueError:
+        return jsonify({"error": "days must be an integer"}), 400
+    today = today_ist()
+    from_date = today - timedelta(days=days_back) if days_back > 0 else datetime(2000, 1, 1).date()
+    source = request.args.get("source") if request.args.get("source") in ("live", "replay") else None
+    try:
+        rows = db_store.list_hv_signals(from_date, source=source)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    return jsonify({"quotes": quotes, "fetched_at": datetime.now().astimezone().isoformat()})
+    return jsonify({"signals": rows, "summary": hv_signal_summary(rows)})
+
+
+def hv_signal_action_endpoint():
+    body = request.get_json(silent=True) or {}
+    if not body.get("signal_id") or body.get("action") not in ("skipped", "taken"):
+        return jsonify({"error": "signal_id and action (skipped|taken) are required"}), 400
+    try:
+        db_store.set_hv_signal_action(int(body["signal_id"]), body["action"], body.get("reason") or None)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True})
+
+
+def hv_replay_endpoint():
+    """Replays ~60 days of 1-minute data for one stock through the detector."""
+    symbols = _parse_symbols((request.get_json(silent=True) or {}).get("symbol"))
+    if len(symbols) != 1:
+        return jsonify({"error": "one symbol is required"}), 400
+    kite, err = _kite_or_error()
+    if err:
+        return err
+    try:
+        return jsonify(hv_replay(kite, _hv_config(), symbols[0]))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
 
 def hv_gift_nifty_endpoint():
@@ -627,17 +716,43 @@ def hv_position_open_endpoint():
         return err
     qty, price, filled_at = args
     try:
+        planned_stop = float(body["planned_stop"]) if body.get("planned_stop") not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "planned_stop must be a number"}), 400
+    try:
         trade_date = today_ist()
         for p in db_store.list_hv_positions(trade_date, trade_date):
             if p["symbol"] == symbol and position_summary(p["side"], p["fills"])["status"] == "open":
                 return jsonify({"error": f"{symbol} already has an open position today -- use Add "
                                          "(scale in) or Exit on it."}), 409
+        # Logging is never refused (the order is already placed in Kite),
+        # but a trade taken against the limits is recorded as a rule break.
+        cfg = _hv_config()
+        day, period, _ = hv_risk_snapshot(cfg, now_ist())
+        breaks = hv_entry_blockers(symbol, day, cfg)
+        if planned_stop is None:
+            breaks.append("no planned stop")
+        suggestion = (body.get("signal_meta") or {}).get("suggestion") or {}
+        if suggestion.get("fails"):
+            breaks.append("took a suggestion marked skip (" + "; ".join(suggestion["fails"]) + ")")
+        one_r = cfg.one_r * period["size_mult"]
+        risk_amount = None
+        if planned_stop is not None:
+            per_share = (price - planned_stop) if side == "long" else (planned_stop - price)
+            risk_amount = round(max(per_share, 0) * qty + price * qty * cfg.cost_pct / 100, 2)
+            if risk_amount > one_r * 1.1:
+                breaks.append(f"risk Rs {risk_amount:,.0f} is over 1R (Rs {one_r:,.0f})")
         position_id = db_store.create_hv_position(
             trade_date, symbol, side, qty, price, filled_at,
-            setup_tag=body.get("setup_tag"), note=body.get("note"), signal_meta=body.get("signal_meta"))
+            setup_tag=body.get("setup_tag"), note=body.get("note"), signal_meta=body.get("signal_meta"),
+            planned_stop=planned_stop, risk_amount=risk_amount or one_r, rule_broken=bool(breaks),
+            rule_note="; ".join(breaks) or None,
+            signal_id=int(body["signal_id"]) if body.get("signal_id") else None)
+        if body.get("signal_id"):
+            db_store.set_hv_signal_action(int(body["signal_id"]), "taken")
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    return jsonify({"id": position_id})
+    return jsonify({"id": position_id, "rule_broken": bool(breaks), "rule_note": "; ".join(breaks) or None})
 
 
 def hv_fill_endpoint():
@@ -681,8 +796,14 @@ def hv_position_update_endpoint():
         return jsonify({"error": "position_id is required"}), 400
     rating = body.get("execution_rating") if body.get("execution_rating") in ("clean", "rushed") else None
     try:
+        stop = float(body["planned_stop"]) if body.get("planned_stop") not in (None, "") else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "planned_stop must be a number"}), 400
+    try:
         db_store.update_hv_position(int(body["position_id"]), body.get("setup_tag") or None,
-                                    body.get("note") or None, rating)
+                                    body.get("note") or None, rating,
+                                    rule_broken=bool(body.get("rule_broken")),
+                                    rule_note=body.get("rule_note") or None, planned_stop=stop)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     return jsonify({"ok": True})
@@ -714,6 +835,23 @@ def hv_journal_endpoint():
         journal = build_journal(db_store.list_hv_positions(from_date), cfg)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    for d in journal["days"]:
+        d["r"], d["rule_breaks"], d["wins"], d["losses"] = 0.0, 0, 0, 0
+    days_by_date = {d["date"]: d for d in journal["days"]}
+    for p in journal["positions"]:
+        p["r"] = position_r(p, cfg)
+        d = days_by_date.get(p["trade_date"])
+        if d is not None:
+            d["r"] = round(d["r"] + (p["r"] or 0), 2)
+            d["rule_breaks"] += 1 if p.get("rule_broken") else 0
+            if p["summary"]["status"] == "closed":
+                d["wins" if p["summary"]["net_pnl"] > 0 else "losses"] += 1
+    journal["totals"]["r"] = round(sum(d["r"] for d in journal["days"]), 2)
+    try:
+        day, period, _ = hv_risk_snapshot(cfg, now_ist())
+        journal["risk"], journal["period"] = day, period
+    except Exception as e:  # risk figures are extra; the journal still loads
+        journal["risk_error"] = str(e)
     for p in journal["positions"]:
         s = p["summary"]
         if s["open_qty"] and s["avg_entry"]:
@@ -767,6 +905,10 @@ _ROUTES = {
     "hv-position-update": hv_position_update_endpoint,
     "hv-position-delete": hv_position_delete_endpoint,
     "hv-journal": hv_journal_endpoint,
+    "hv-watch-start": hv_watch_start_endpoint,
+    "hv-signals": hv_signals_endpoint,
+    "hv-signal-action": hv_signal_action_endpoint,
+    "hv-replay": hv_replay_endpoint,
 }
 
 

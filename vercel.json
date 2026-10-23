@@ -44,7 +44,11 @@
     { "source": "/api/hv-fill-delete", "destination": "/api/index?r=hv-fill-delete" },
     { "source": "/api/hv-position-update", "destination": "/api/index?r=hv-position-update" },
     { "source": "/api/hv-position-delete", "destination": "/api/index?r=hv-position-delete" },
-    { "source": "/api/hv-journal", "destination": "/api/index?r=hv-journal" }
+    { "source": "/api/hv-journal", "destination": "/api/index?r=hv-journal" },
+    { "source": "/api/hv-watch-start", "destination": "/api/index?r=hv-watch-start" },
+    { "source": "/api/hv-signals", "destination": "/api/index?r=hv-signals" },
+    { "source": "/api/hv-signal-action", "destination": "/api/index?r=hv-signal-action" },
+    { "source": "/api/hv-replay", "destination": "/api/index?r=hv-replay" }
   ],
   "crons": [
     { "path": "/api/sync-nse-holidays", "schedule": "0 3 1 1 *" }

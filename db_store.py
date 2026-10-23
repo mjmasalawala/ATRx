@@ -43,6 +43,8 @@ HV_DAY_TABLE = "hv_day"
 HV_FOCUS_TABLE = "hv_focus"
 HV_POSITIONS_TABLE = "hv_positions"
 HV_FILLS_TABLE = "hv_fills"
+HV_WATCH_CONTEXT_TABLE = "hv_watch_context"
+HV_SIGNALS_TABLE = "hv_signals"
 
 BREAKOUT_CONFIG_TABLE = "breakout_config"
 BREAKOUT_SIGNAL_EVENTS_TABLE = "breakout_signal_events"
@@ -670,16 +672,20 @@ def save_hv_day(trade_date, gift_nifty, note, focus: list[dict]) -> None:
 
 def create_hv_position(trade_date, symbol: str, side: str, qty: int, price, filled_at=None,
                        setup_tag: str | None = None, note: str | None = None,
-                       signal_meta: dict | None = None) -> int:
+                       signal_meta: dict | None = None, planned_stop=None, risk_amount=None,
+                       rule_broken: bool = False, rule_note: str | None = None,
+                       signal_id: int | None = None) -> int:
     """Opens a position together with its first entry fill."""
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             f"""
-            INSERT INTO {HV_POSITIONS_TABLE} (trade_date, symbol, side, setup_tag, note, signal_meta)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            INSERT INTO {HV_POSITIONS_TABLE} (trade_date, symbol, side, setup_tag, note, signal_meta,
+                                              planned_stop, risk_amount, rule_broken, rule_note, signal_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
             """,
             [trade_date, symbol, side, setup_tag, note,
-             Json(signal_meta) if signal_meta is not None else None],
+             Json(signal_meta) if signal_meta is not None else None,
+             planned_stop, risk_amount, rule_broken, rule_note, signal_id],
         )
         position_id = cur.fetchone()[0]
         cur.execute(
@@ -707,15 +713,19 @@ def add_hv_fill(position_id: int, kind: str, qty: int, price, filled_at=None) ->
         return fill_id
 
 
-def update_hv_position(position_id: int, setup_tag, note, execution_rating) -> None:
+def update_hv_position(position_id: int, setup_tag, note, execution_rating,
+                       rule_broken: bool = False, rule_note: str | None = None, planned_stop=None) -> None:
+    """planned_stop=None keeps the stored one (it is set when the trade is
+    opened and only corrected by hand)."""
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             f"""
             UPDATE {HV_POSITIONS_TABLE}
-            SET setup_tag = %s, note = %s, execution_rating = %s
+            SET setup_tag = %s, note = %s, execution_rating = %s, rule_broken = %s, rule_note = %s,
+                planned_stop = COALESCE(%s, planned_stop)
             WHERE id = %s
             """,
-            [setup_tag, note, execution_rating, position_id],
+            [setup_tag, note, execution_rating, rule_broken, rule_note, planned_stop, position_id],
         )
         conn.commit()
 
@@ -735,7 +745,8 @@ def delete_hv_fill(fill_id: int) -> None:
 def list_hv_positions(from_date, to_date=None) -> list[dict]:
     """Positions (with all their fills) from from_date onward, newest first."""
     query = f"""
-        SELECT id, trade_date, symbol, side, setup_tag, note, execution_rating, signal_meta, created_at
+        SELECT id, trade_date, symbol, side, setup_tag, note, execution_rating, signal_meta, created_at,
+               planned_stop, risk_amount, rule_broken, rule_note, signal_id
         FROM {HV_POSITIONS_TABLE} WHERE trade_date >= %s
     """
     params = [from_date]
@@ -766,8 +777,12 @@ def list_hv_positions(from_date, to_date=None) -> list[dict]:
     return [
         {"id": pid, "trade_date": d.isoformat(), "symbol": sym, "side": side,
          "setup_tag": tag, "note": note, "execution_rating": rating, "signal_meta": meta,
-         "created_at": created.isoformat(), "fills": fills_by_position.get(pid, [])}
-        for pid, d, sym, side, tag, note, rating, meta, created in rows
+         "created_at": created.isoformat(), "fills": fills_by_position.get(pid, []),
+         "planned_stop": float(stop) if stop is not None else None,
+         "risk_amount": float(risk) if risk is not None else None,
+         "rule_broken": bool(broken), "rule_note": rule_note, "signal_id": signal_id}
+        for pid, d, sym, side, tag, note, rating, meta, created, stop, risk, broken, rule_note, signal_id
+        in rows
     ]
 
 
@@ -780,3 +795,143 @@ def get_hv_position(position_id: int) -> dict | None:
         return None
     matches = [p for p in list_hv_positions(row[0], row[0]) if p["id"] == position_id]
     return matches[0] if matches else None
+
+
+def save_watch_context(trade_date, rows: list[dict]) -> None:
+    """rows: [{symbol, instrument_token, context}] for the day's watched
+    stocks. Replaces those symbols' rows and drops days older than 14."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(f"DELETE FROM {HV_WATCH_CONTEXT_TABLE} WHERE trade_date < %s::date - 14", [trade_date])
+        cur.executemany(
+            f"""
+            INSERT INTO {HV_WATCH_CONTEXT_TABLE} (trade_date, symbol, instrument_token, context, updated_at)
+            VALUES (%s, %s, %s, %s, now())
+            ON CONFLICT (trade_date, symbol) DO UPDATE SET
+                instrument_token = EXCLUDED.instrument_token, context = EXCLUDED.context, updated_at = now()
+            """,
+            [[trade_date, r["symbol"], r.get("instrument_token"), Json(r["context"])] for r in rows],
+        )
+        conn.commit()
+
+
+def load_watch_context(trade_date) -> dict[str, dict]:
+    """{symbol: {instrument_token, context}} for the day."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT symbol, instrument_token, context FROM {HV_WATCH_CONTEXT_TABLE} WHERE trade_date = %s",
+            [trade_date],
+        )
+        return {s: {"instrument_token": t, "context": c} for s, t, c in cur.fetchall()}
+
+
+_SIGNAL_COLS = ("id", "source", "trade_date", "symbol", "stage", "episode", "signal_at", "day_type",
+                "metrics", "entry", "stop", "target", "qty", "action", "skip_reason", "outcome",
+                "outcome_r", "mfe_r", "mae_r", "scored_at")
+
+
+def _signal_row(row) -> dict:
+    d = dict(zip(_SIGNAL_COLS, row))
+    d["trade_date"] = d["trade_date"].isoformat()
+    for k in ("signal_at", "scored_at"):
+        d[k] = d[k].isoformat() if d[k] else None
+    for k in ("entry", "stop", "target", "outcome_r", "mfe_r", "mae_r"):
+        d[k] = float(d[k]) if d[k] is not None else None
+    return d
+
+
+def record_hv_signal(sig: dict) -> int:
+    """Stores a live signal once per (source, day, symbol, stage, episode)
+    and returns its id (the existing one if it was already stored)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {HV_SIGNALS_TABLE} (source, trade_date, symbol, stage, episode, signal_at, day_type,
+                                            metrics, entry, stop, target, qty)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (source, trade_date, symbol, stage, episode) DO NOTHING
+            RETURNING id
+            """,
+            [sig.get("source", "live"), sig["trade_date"], sig["symbol"], sig["stage"], sig["episode"],
+             sig["signal_at"], sig.get("day_type"), Json(sig.get("metrics")), sig.get("entry"),
+             sig.get("stop"), sig.get("target"), sig.get("qty")],
+        )
+        row = cur.fetchone()
+        if row is None:
+            cur.execute(
+                f"""
+                SELECT id FROM {HV_SIGNALS_TABLE}
+                WHERE source = %s AND trade_date = %s AND symbol = %s AND stage = %s AND episode = %s
+                """,
+                [sig.get("source", "live"), sig["trade_date"], sig["symbol"], sig["stage"], sig["episode"]],
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row[0]
+
+
+def list_hv_signals(from_date, to_date=None, source: str | None = None) -> list[dict]:
+    query = f"SELECT {', '.join(_SIGNAL_COLS)} FROM {HV_SIGNALS_TABLE} WHERE trade_date >= %s"
+    params = [from_date]
+    if to_date is not None:
+        query += " AND trade_date <= %s"
+        params.append(to_date)
+    if source:
+        query += " AND source = %s"
+        params.append(source)
+    query += " ORDER BY trade_date DESC, signal_at DESC"
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(query, params)
+        return [_signal_row(r) for r in cur.fetchall()]
+
+
+def set_hv_signal_action(signal_id: int, action: str, skip_reason: str | None = None) -> None:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE {HV_SIGNALS_TABLE} SET action = %s, skip_reason = %s WHERE id = %s",
+            [action, skip_reason, signal_id],
+        )
+        conn.commit()
+
+
+def save_hv_signal_scores(scores: list[dict]) -> None:
+    """scores: [{id, outcome, outcome_r, mfe_r, mae_r, action?}] -- one round trip."""
+    if not scores:
+        return
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.executemany(
+            f"""
+            UPDATE {HV_SIGNALS_TABLE}
+            SET outcome = %s, outcome_r = %s, mfe_r = %s, mae_r = %s, scored_at = now(),
+                action = COALESCE(action, %s)
+            WHERE id = %s
+            """,
+            [[s["outcome"], s.get("outcome_r"), s.get("mfe_r"), s.get("mae_r"), s.get("action"), s["id"]]
+             for s in scores],
+        )
+        conn.commit()
+
+
+def replace_hv_replay_signals(symbol: str, from_date, to_date, rows: list[dict]) -> None:
+    """Replaces a symbol's replay signals over a date range (re-running a
+    replay never duplicates rows)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            DELETE FROM {HV_SIGNALS_TABLE}
+            WHERE source = 'replay' AND symbol = %s AND trade_date BETWEEN %s AND %s
+            """,
+            [symbol, from_date, to_date],
+        )
+        cur.executemany(
+            f"""
+            INSERT INTO {HV_SIGNALS_TABLE} (source, trade_date, symbol, stage, episode, signal_at, day_type,
+                                            metrics, entry, stop, target, qty, outcome, outcome_r, mfe_r, mae_r,
+                                            scored_at)
+            VALUES ('replay', %s, %s, 'entry', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            ON CONFLICT (source, trade_date, symbol, stage, episode) DO NOTHING
+            """,
+            [[r["trade_date"], symbol, r["episode"], r["signal_at"], r.get("day_type"), Json(r.get("metrics")),
+              r["entry"], r["stop"], r["target"], r.get("qty"), r.get("outcome"), r.get("outcome_r"),
+              r.get("mfe_r"), r.get("mae_r")] for r in rows],
+        )
+        conn.commit()

@@ -17,6 +17,7 @@
     --accent: #E0A857;
     --positive: #4CAF7D;
     --negative: #E1615B;
+    --info: #5B9BD5;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }
@@ -51,6 +52,7 @@
 
   input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 7px 9px; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  input:disabled { opacity: 0.55; }
   input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; padding: 0; }
   label.field { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--text-dim); }
 
@@ -60,8 +62,28 @@
   .card--positive { border-color: var(--positive); background: rgba(76,175,125,0.07); }
   .card--negative { border-color: var(--negative); background: rgba(225,97,91,0.07); }
   .card--warning { border-color: var(--accent); background: rgba(224,168,87,0.08); }
+  .card--entry { border: 2px solid var(--info); background: rgba(91,155,213,0.07); }
   .card h2, .card h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
   .card .sub { color: var(--text-dim); font-size: 12px; margin: 0 0 14px; line-height: 1.5; }
+
+  /* ---- stage pills: one definition, a variant per stage ---- */
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pill--watching, .pill--closed { background: var(--surface-alt); color: var(--text-dim); }
+  .pill--stretched { background: rgba(183,190,206,0.14); color: var(--text); }
+  .pill--armed { background: rgba(224,168,87,0.18); color: var(--accent); }
+  .pill--entry { background: rgba(91,155,213,0.2); color: var(--info); }
+  .pill--blocked { background: rgba(225,97,91,0.16); color: var(--negative); }
+  .pill--trade { background: rgba(76,175,125,0.18); color: var(--positive); }
+  .pill--target { background: rgba(76,175,125,0.18); color: var(--positive); }
+  .pill--stop { background: rgba(225,97,91,0.16); color: var(--negative); }
+
+  /* ---- info tooltips: one icon style + one floating box ---- */
+  .tip { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--text-dim); color: var(--text-dim); font-size: 10px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; cursor: help; margin-left: 5px; vertical-align: 1px; user-select: none; }
+  .tip:hover, .tip.open { border-color: var(--accent); color: var(--accent); }
+  #tipBox { position: absolute; z-index: 60; max-width: 320px; background: var(--surface-alt); border: 1px solid var(--accent); border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.5; display: none; }
+  #tipBox b { display: block; margin-bottom: 4px; }
+  #tipBox .t-row { margin-top: 4px; }
+  #tipBox .t-k { color: var(--accent); }
 
   .section { margin: 20px 32px 0; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
@@ -77,10 +99,11 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
-  /* scoreboard */
+  /* risk bar */
   .score-grid { display: flex; gap: 28px; flex-wrap: wrap; align-items: baseline; }
   .score-item .k { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .score-item .v { font-size: 20px; font-weight: 600; }
+  .score-item .s { font-size: 11px; color: var(--text-dim); }
   .score-msg { margin-top: 10px; font-size: 13px; }
 
   /* tables */
@@ -97,27 +120,34 @@
   .chip { display: inline-block; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); font-size: 11px; color: var(--text-dim); cursor: pointer; user-select: none; margin: 0 2px; font-family: 'Space Grotesk', sans-serif; }
   .chip.on { border-color: var(--accent); color: var(--accent); background: rgba(224,168,87,0.12); }
   .chip.static { cursor: default; }
+  .chip.warn { border-color: var(--negative); color: var(--negative); cursor: default; }
   td input.note { width: 150px; font-family: 'Space Grotesk', sans-serif; font-size: 12px; padding: 4px 6px; }
   td select { font-size: 12px; padding: 4px 6px; }
 
   /* live cards */
   .live-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
-  .live-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .live-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .live-head .sym { font-size: 18px; font-weight: 700; margin-right: 8px; }
-  .live-head .price { font-size: 26px; font-weight: 600; }
-  .live-sub { font-size: 12px; color: var(--text-dim); margin: 2px 0 12px; }
-  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 10px; margin-bottom: 12px; }
-  .metric .k { font-size: 10.5px; color: var(--text-dim); }
-  .metric .v { font-size: 13px; }
+  .live-head .price { font-size: 22px; font-weight: 600; }
+  .live-sub { font-size: 12px; color: var(--text-dim); margin: 4px 0 10px; }
+  .checks { display: flex; flex-direction: column; gap: 3px; }
+  .check-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 2px 0; }
+  .check-row.sub-check { padding-left: 22px; font-size: 12px; color: var(--text-dim); }
+  .check-row .mark { display: inline-block; width: 16px; text-align: center; margin-right: 4px; }
+  .check-row .ok { color: var(--positive); } .check-row .bad { color: var(--negative); } .check-row .no { color: var(--text-dim); }
+  .reasons { margin-top: 8px; font-size: 12px; color: var(--negative); line-height: 1.5; }
   .block { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
   .block .title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 6px; }
-  .ladder { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; font-size: 12px; }
-  .ladder .k { color: var(--text-dim); font-size: 10.5px; }
+  .kv { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 14px; font-size: 13px; }
+  .kv .k { color: var(--text-dim); font-size: 12px; }
+  .prompt { font-size: 13px; padding: 4px 0; }
+  .prompt.warn { color: var(--negative); font-weight: 600; }
   .act-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; }
-  .act-row input { width: 90px; }
+  .act-row input { width: 86px; }
   .act-msg { font-size: 12px; margin-top: 6px; min-height: 16px; color: var(--text-dim); }
   .act-msg.err { color: var(--negative); }
   .hint { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .strip-item { display: inline-flex; gap: 6px; align-items: center; margin-right: 18px; font-size: 13px; }
 
   /* journal */
   .headline { font-size: 34px; font-weight: 700; }
@@ -137,6 +167,15 @@
   .toast { background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; padding: 10px 14px; font-size: 13px; box-shadow: 0 6px 18px rgba(0,0,0,0.4); cursor: pointer; }
   details summary { cursor: pointer; color: var(--text-dim); font-size: 12px; }
   footer { padding: 20px 32px 0; color: var(--text-dim); font-size: 12px; line-height: 1.6; max-width: 820px; }
+
+  @media (max-width: 720px) {
+    body { flex-direction: column; }
+    .sidebar { width: auto; flex-direction: row; flex-wrap: wrap; padding: 8px; }
+    .sidebar-title { display: none; }
+    header, .section, .tabs, #banner { margin-left: 16px; margin-right: 16px; }
+    header { padding: 16px; }
+    .live-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -170,7 +209,7 @@
 
 <div id="settingsPanel" class="section card" style="display:none">
   <h2>Settings</h2>
-  <p class="sub">Saved to your account and used by every tab. Amounts are in rupees.</p>
+  <p class="sub">Saved to your account and used by every tab. Amounts are in rupees. Risk limits are locked from 9:15 to 15:30 -- a limit is never moved during the session it covers.</p>
   <div id="settingsFields"></div>
   <div class="row" style="margin-top:16px">
     <button id="saveSettingsBtn">Save settings</button>
@@ -178,19 +217,20 @@
   </div>
 </div>
 
-<div id="scoreboard" class="section card"></div>
+<div id="riskBar" class="section card"></div>
 
 <div class="tabs">
   <button class="tab active" data-tab="pre">Pre-open</button>
   <button class="tab" data-tab="live">Live</button>
   <button class="tab" data-tab="journal">Journal &amp; dashboard</button>
+  <button class="tab" data-tab="signals">Signals</button>
 </div>
 
 <!-- =============== PRE-OPEN =============== -->
 <div id="tab-pre" class="tab-panel active">
   <div class="section card">
     <h2>Before the open</h2>
-    <p class="sub">Type what you've gathered -- GIFT Nifty and your notes are saved for today. Then build the ranked watchlist (reuses the ATR% saved by your Find ATRx Opps run) and tick the 2-3 tickers you'll trade.</p>
+    <p class="sub">Type what you've gathered -- GIFT Nifty and your notes are saved for today. Then build the ranked watchlist (reuses the ATR% saved by your Find ATRx Opps run) and tick the 2-3 tickers you'll trade. Tick Results or News on a stock to trade it at half size.</p>
     <div class="row">
       <label class="field">GIFT Nifty (now)
         <input id="giftNifty" type="number" step="0.05" style="width:140px" placeholder="e.g. 25840">
@@ -210,6 +250,7 @@
       <button id="rebuildBtn" class="secondary" title="Re-fetch all 5-minute history instead of using today's cache">Force refresh</button>
     </div>
     <div id="buildInfo" class="hint" style="margin-top:10px"></div>
+    <p class="hint">ASM/GSM and trade-to-trade stocks can't be traded intraday and aren't flagged here -- check those by hand.</p>
   </div>
 
   <div class="section card">
@@ -230,12 +271,16 @@
 <!-- =============== LIVE =============== -->
 <div id="tab-live" class="tab-panel">
   <div class="section row" style="align-items:center">
+    <button id="watchBtn" title="Loads each watched stock's levels, daily ATR and normal volume by time of day">Start watch</button>
     <button id="alertsBtn" class="secondary">Enable browser alerts</button>
     <button id="refreshBtn" class="secondary">Refresh now</button>
     <span id="liveStatus" class="dim" style="font-size:12px"></span>
   </div>
+  <div id="niftyLine" class="section dim" style="font-size:13px"></div>
   <div class="section"><div id="liveGrid" class="live-grid"></div></div>
-  <footer>Logging a trade here only records it -- place the actual order in Kite. Prices refresh once a minute while this tab stays open; alerts only fire while it's open.</footer>
+  <div id="stripBox" class="section card card--compact" style="display:none"></div>
+  <div id="liveSummary" class="section card" style="display:none"></div>
+  <footer>Every order is yours to place in Kite: a limit buy at the card's price and size, then the stop-loss order the moment it fills. Logging here only records it. Cards refresh every <span id="pollSecs">30</span> s while this tab stays open; alerts only fire while it's open.</footer>
 </div>
 
 <!-- =============== JOURNAL =============== -->
@@ -248,13 +293,42 @@
       <button class="secondary small" data-days="0">All</button>
     </div>
   </div>
+  <div id="todaySummary" class="section card"></div>
   <div id="journalHeadline" class="section card"></div>
   <div id="journalChart" class="section card"></div>
   <div class="section card"><h3>Days</h3><div class="table-wrap"><table id="daysTable"></table></div></div>
   <div class="section card"><h3>Trades</h3><div class="table-wrap"><table id="positionsTable"></table></div></div>
 </div>
 
+<!-- =============== SIGNALS =============== -->
+<div id="tab-signals" class="tab-panel">
+  <div class="section card">
+    <h2>Signal log and backtest</h2>
+    <p class="sub">Every Setup armed and Entry zone the page showed is saved and scored against what price did next: Target (reached VWAP first), Stop (hit the stop first; both in one minute counts as Stop), Time-out (neither in 30 minutes, scored in R at that point) or Not filled (never traded at the limit within 2 bars). Compare Taken with Lapsed and Skipped to see whether hesitation or skipping costs you money.</p>
+    <div class="row">
+      <div class="range-btns" id="sigRangeBtns">
+        <button class="secondary small" data-days="7">7 days</button>
+        <button class="secondary small active" data-days="30">30 days</button>
+        <button class="secondary small" data-days="90">90 days</button>
+        <button class="secondary small" data-days="0">All</button>
+      </div>
+      <label class="field">Source<select id="sigSource"><option value="">live + replay</option><option value="live">live</option><option value="replay">replay</option></select></label>
+      <button id="scoreBtn" class="secondary">Score today's signals</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <label class="field grow">Replay stocks (NSE symbols, comma separated)
+        <input id="replaySyms" type="text" placeholder="e.g. ETERNAL, TATASTEEL" style="text-transform:uppercase">
+      </label>
+      <button id="replayBtn">Run replay</button>
+    </div>
+    <div id="replayInfo" class="hint" style="margin-top:8px">Replay runs the same detector over about the last 60 days of 1-minute data (days with 10+ earlier sessions), one stock at a time. Re-running replaces that stock's replay rows. No live quote exists in a replay, so the spread and circuit checks are skipped.</div>
+  </div>
+  <div id="sigSummary" class="section card"></div>
+  <div class="section card"><h3>Signals</h3><div class="table-wrap"><table id="sigTable"></table></div></div>
+</div>
+
 <div id="toasts"></div>
+<div id="tipBox" role="tooltip"></div>
 
 <script>
 "use strict";
@@ -262,20 +336,48 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const TAGS = [["results","Results"],["news","News"],["broker_buy","Broker buy"],["broker_sell","Broker sell"]];
 const SETUP_TAGS = ["dip-buy", "bounce-short", "re-entry", "scale-in recovery", "breakout", "other"];
+const STAGE_LABEL = { watching: "Watching", stretched: "Stretched", armed: "Setup armed", entry: "Entry zone", blocked: "Blocked", closed: "No new entries", trade: "In trade" };
 
-let SETTINGS = null, CHARGES = null;
+/* Tooltip text for every metric: what it is, how to read it, how to use it
+   (the "Metric tooltips" table of the risk review doc). */
+const TIPS = {
+  day_type: ["Day type", "Whether today trades in a range or trends, for the stock and for Nifty.", "Range: price keeps crossing VWAP. Trend down: below a falling VWAP, or the opening range broken on 2x volume and held.", "Dip-buys only on Range or Trend up. On Trend down the card is blocked; don't override it."],
+  vwap: ["VWAP", "The average price paid today, weighted by volume, from 9:15.", "Above it, buyers are in control today; below it, sellers are.", "The mean the dip should revert to. It is the first target."],
+  stretch: ["Stretch", "How far price is below VWAP, in VWAP bands (σ), or how far below the session high in daily ATRs.", "−1.0σ is a normal dip. −1.5σ or lower (or 0.4 ATR off the high) is stretched. Beyond −3σ often means news, not noise.", "Puts a stock on watch. Never a reason to buy by itself."],
+  exhaustion: ["Exhaustion", "Signs that the selling has run out: any two of RSI(5) under 20, a volume spike then a quieter bar, a long lower wick, price at a marked level.", "Two or more = the dip may be done. Read on closed 5-minute bars.", "Stretch plus two signs arms the setup. Get ready; don't buy yet."],
+  rsi: ["RSI(5)", "Momentum over the last five 5-minute bars, 0 to 100.", "Under 20: selling is exhausted for now. Over 70 on the bounce: buying is.", "One exhaustion sign on entry; an exit warning on the bounce."],
+  volume: ["Volume spike", "A down bar's volume against the stock's normal volume at that time of day.", "2x or more on the down bar, then a quieter bar, is capitulation. Rising volume bar after bar is continued selling.", "Needs the quieter follow-up bar to count. Rising sell volume is a reason to wait."],
+  wick: ["Lower wick", "The part of the bar below the open or close.", "A wick of half the bar or more means sellers pushed down and buyers pushed back.", "One exhaustion sign. Strongest at a marked level."],
+  level: ["At a level", "The flush low within 0.1 ATR of the previous day's low or close, the opening-range low, the open or a round number.", "Levels are where other traders also buy.", "One exhaustion sign. The flush low near a level is the natural stop."],
+  confirmation: ["Confirmation", "Evidence the dip has turned: a close above the previous bar's high, a higher low, or a sweep of the prior low that closes back above it.", "Sweep and reclaim is the strongest; a higher low is the safest.", "This moves a card to Entry zone. No confirmation, no trade. It lapses after 2 one-minute bars."],
+  spread: ["Spread", "Gap between the best buy and best sell price, as % of price.", "Under 0.15% is good. Over 0.3% eats the edge.", "Above 0.3% the card is red; skip."],
+  band: ["Band distance", "How far price is from the lower and upper circuit limits.", "Under 3%: no new entries. Under 1.5%: exit now, the stock may lock.", "Respect it absolutely; a locked stock cannot be sold."],
+  net_rr: ["Net R:R", "Reward to target ÷ risk to stop, both after 0.2% costs.", "1.5 is good; under 1.2 the trade doesn't pay for its losers.", "Under 1.2 the card is red; skip."],
+  size: ["Size", "Shares = the smallest of three caps: 1R ÷ loss per share, 1% of the stock's average 5-minute traded value, and the exposure left.", "The binding cap is named. Liquidity binding is normal in small caps.", "Buy exactly this many. Never round up."],
+  r: ["R", "A result in units of planned risk. 1R = your planned loss on one trade.", "+1.5R = made 1.5 times what you risked. −1R = a normal loss.", "Read every trade and the day in R, not rupees. A loss beyond −1R means a stop was missed."],
+  open_risk: ["Open risk", "Total R lost if every open position hit its stop now.", "Never above 1.5R across correlated positions.", "When it is high, wait for one trade to close."],
+  time_stop: ["Time stop", "Minutes left for the trade to reach +0.5R.", "A bounce that doesn't come in 30 minutes usually isn't coming.", "At zero, exit at market."],
+  day_r: ["Day P&L", "Today's realised net P&L in R and rupees.", "The day stops at −2% of capital, after 3 losses in a row, or after giving back half of a +4R peak.", "When the banner says Day stopped, close anything open in Kite and log off."],
+  streak: ["Loss streak", "Losing trades in a row today.", "2 in a row: a 10-minute cool-off. 3: done for the day.", "Use the cool-off to step away, not to look for the next trade."],
+  exposure: ["Exposure", "Total notional of open positions against the cap (2x capital).", "MIS allows up to 5x; this page stops at 2x.", "No new entries once the cap is used."],
+  trips: ["Round trips", "Closed trades today, against the daily maximum (8; 4 per stock).", "More trades means more costs and more chances to break a rule.", "At the maximum, setups stop arming."],
+};
+function tip(key) { return TIPS[key] ? `<span class="tip" tabindex="0" data-tip="${key}" aria-label="About ${esc(TIPS[key][0])}">i</span>` : ""; }
+
+let SETTINGS = null, CHARGES = null, RISK_FIELDS = [];
 let DAY = { gift_nifty: null, note: "", focus: [] };
 let ROWS = {};            // symbol -> { focus, bias, tags[], note, pre_meta }
 let CAND = null;          // last /api/hv-candidates response
 let JOURNAL = null;       // last /api/hv-journal response
-let JOURNAL_DAYS = 30;
-let QUOTES = {};
+let JOURNAL_DAYS = 30, SIG_DAYS = 30;
+let LIVE = null;          // last /api/hv-live response
 let LOGGED_IN = false;
-let LIVE_SIG = "";
 let pollTimer = null, saveTimer = null;
-const CARDS = new Map();  // symbol -> card element
+const CARDS = new Map();  // symbol -> { el, actSig }
+const WATCH_REQUESTED = new Set();
 
 function istDate() { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); }
+function istHM() { return new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }); }
 function money(n, signed) {
   if (n === null || n === undefined || isNaN(n)) return "–";
   const s = Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -283,6 +385,7 @@ function money(n, signed) {
 }
 const num2 = n => (n === null || n === undefined || isNaN(n)) ? "–" : Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n, signed = true) => (n === null || n === undefined || isNaN(n)) ? "–" : (signed && n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(2) + "%";
+const rr = n => (n === null || n === undefined || isNaN(n)) ? "–" : (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(2) + "R";
 const sgn = n => n > 0 ? "pos" : n < 0 ? "neg" : "";
 
 async function api(path, opts) {
@@ -300,6 +403,29 @@ function banner(msg, kind) {
   b.className = msg ? kind : "";
 }
 
+/* ---------------- tooltips ---------------- */
+function showTip(el) {
+  const t = TIPS[el.dataset.tip]; if (!t) return;
+  const box = $("tipBox");
+  box.innerHTML = `<b>${esc(t[0])}</b>${esc(t[1])}<div class="t-row"><span class="t-k">How to read it:</span> ${esc(t[2])}</div><div class="t-row"><span class="t-k">How to use it:</span> ${esc(t[3])}</div>`;
+  box.style.display = "block";
+  const r = el.getBoundingClientRect(), w = box.offsetWidth;
+  box.style.left = Math.max(8, Math.min(window.scrollX + r.left - 12, window.scrollX + document.documentElement.clientWidth - w - 8)) + "px";
+  box.style.top = (window.scrollY + r.bottom + 6) + "px";
+  document.querySelectorAll(".tip.open").forEach(x => x.classList.remove("open"));
+  el.classList.add("open");
+}
+function hideTip() { $("tipBox").style.display = "none"; document.querySelectorAll(".tip.open").forEach(x => x.classList.remove("open")); }
+document.addEventListener("mouseover", e => { const el = e.target.closest(".tip"); if (el) showTip(el); });
+document.addEventListener("mouseout", e => { if (e.target.closest(".tip")) hideTip(); });
+document.addEventListener("focusin", e => { const el = e.target.closest(".tip"); if (el) showTip(el); });
+document.addEventListener("focusout", e => { if (e.target.closest(".tip")) hideTip(); });
+document.addEventListener("click", e => {
+  const el = e.target.closest(".tip");
+  if (el) { showTip(el); return; }  // hover already opened it on desktop; a tap opens it on touch screens
+  if (!e.target.closest("#tipBox")) hideTip();
+});
+
 /* ---------------- charges (mirror of hv_journal.py) ---------------- */
 function fillCharges(side, kind, qty, price) {
   const C = CHARGES, t = qty * price, isBuy = (kind === "entry") === (side === "long");
@@ -307,12 +433,6 @@ function fillCharges(side, kind, qty, price) {
   const exch = t * C.exchange_txn_pct / 100, sebi = t * C.sebi_pct / 100;
   const gst = (brok + exch + sebi) * C.gst_pct / 100;
   return brok + exch + sebi + gst + (isBuy ? t * C.stamp_buy_pct / 100 : t * C.stt_sell_pct / 100);
-}
-function targetPrice(side, entry, qty, netPct) {
-  const sign = side === "long" ? 1 : -1, want = entry * qty * netPct / 100, ec = fillCharges(side, "entry", qty, entry);
-  let p = entry;
-  for (let i = 0; i < 4; i++) p = entry + sign * (want + ec + fillCharges(side, "exit", qty, p)) / qty;
-  return p;
 }
 function openPositionFor(symbol) {
   if (!JOURNAL) return null;
@@ -339,10 +459,44 @@ async function checkStatus() {
 }
 
 const SETTING_DEFS = [
+  ["Risk limits", [
+    ["capital", "Trading capital (₹)", "The amount this strategy may lose, kept apart from long-term money."],
+    ["risk_pct", "1R (% of capital)", "Planned loss per trade. 0.25 for the first 20 trades, then 0.5."],
+    ["daily_loss_pct", "Daily loss limit (%)", "Flatten and stop for the day."],
+    ["weekly_loss_pct", "Weekly loss (%)", "A week this bad halves the size next week."],
+    ["monthly_dd_pct", "Monthly drawdown (%)", "From the month's peak: stop live trading and review."],
+    ["giveback_trigger_r", "Give-back trigger (R)", "Once the day reaches this..."],
+    ["giveback_frac", "Give-back share", "...giving back this share of the peak ends the day."],
+    ["max_open_positions", "Max open positions", "1 while Nifty is trending down."],
+    ["max_correlated_r", "Max open risk (R)", "Combined risk of open positions."],
+    ["gross_exposure_x", "Gross exposure (× capital)", "Whatever the broker allows."],
+    ["liquidity_pct", "Liquidity cap (%)", "Of the stock's average first-hour 5-minute traded value."],
+    ["cost_pct", "Costs + slippage (%)", "Round trip, used in sizing and net R:R."],
+    ["min_net_rr", "Min net R:R", "Below this, no trade."],
+    ["max_trips_per_stock", "Round trips per stock", ""],
+    ["max_trips_per_day", "Round trips per day", ""],
+    ["cooloff_after_losses", "Cool-off after losses", "This many losses in a row starts a break."],
+    ["cooloff_minutes", "Cool-off (min)", ""],
+    ["stop_after_losses", "Stop after losses", "This many losses in a row ends the day."],
+    ["event_size_mult", "Event-day size", "Size multiplier on a Results / News day."],
+    ["longs_only", "Longs only", "true for the first month."],
+  ]],
+  ["Session", [
+    ["entry_start", "First entry (HH:MM)", ""], ["entry_end", "Last entry (HH:MM)", ""], ["flat_by", "Flat by (HH:MM)", ""],
+    ["time_stop_minutes", "Time stop (min)", "Exit if not at +0.5R within this."],
+    ["band_no_entry_pct", "No entry within band (%)", "Of a circuit limit."], ["band_exit_pct", "Exit within band (%)", ""],
+    ["min_band_pct", "Never trade bands ≤ (%)", ""], ["max_spread_pct", "Max spread (%)", ""],
+  ]],
+  ["Setup detection", [
+    ["stretch_sigma", "Stretch (σ below VWAP)", ""], ["stretch_atr", "Stretch (ATR off high)", ""],
+    ["rsi_period", "RSI period (5-min bars)", ""], ["rsi_max", "RSI exhausted below", ""], ["rsi_exit", "RSI exit warning above", ""],
+    ["volume_spike_x", "Volume spike (×)", "vs that time of day's normal volume."], ["wick_frac", "Lower wick share", ""],
+    ["level_atr", "Level tolerance (ATR)", ""], ["gap_atr", "Big gap (ATR)", "Gap down bigger than this waits for a VWAP reclaim."],
+    ["entry_valid_bars", "Entry valid (1-min bars)", ""], ["strip_size", "Also-setting-up stocks", "Shortlist stocks scanned besides your picks."],
+    ["poll_seconds", "Refresh every (s)", ""],
+  ]],
   ["Your routine", [
-    ["amount_per_trade", "Amount per trade (₹)", "Quantity = floor(amount ÷ price)."],
-    ["daily_loss_limit", "Daily loss limit (₹)", "Shown on the scoreboard as a warning. Never blocks anything."],
-    ["target_round_trips", "Round trips per day", "Scoreboard says you're done when this many are closed."],
+    ["target_round_trips", "Winning round trips target", "Journal says you're done when this many are closed."],
     ["max_tickers", "Tickers per day", "How many focus tickers you plan to trade."],
   ]],
   ["Pre-open shortlist", [
@@ -359,37 +513,43 @@ const SETTING_DEFS = [
     ["w_whipsaw", "Whipsaw", ""], ["w_gap", "Pre-open gap", ""], ["w_volume_surge", "Volume surge", ""],
     ["tag_bonus", "Bonus per clue", "Fraction of the 0-100 score added per ticked clue (0.05 = 5 points)."],
   ]],
-  ["Live & alerts", [
-    ["poll_seconds", "Refresh every (s)", ""],
-    ["target_pcts", "Net targets (%)", "Comma separated, e.g. 1, 2, 3."],
-    ["dip_alert_pct", "Dip alert %", "Alert when price is this far below the open."],
-    ["bounce_alert_pct", "Bounce alert %", "Alert when price is this far above the day's low (after a dip)."],
-  ]],
 ];
+function inSession() {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const m = d.getHours() * 60 + d.getMinutes();
+  return d.getDay() >= 1 && d.getDay() <= 5 && m >= 555 && m < 930;
+}
 function renderSettings() {
+  const locked = inSession();
   $("settingsFields").innerHTML = SETTING_DEFS.map(([group, fields]) =>
-    `<div class="config-group-label">${esc(group)}</div><div class="config-grid">` +
-    fields.map(([key, label, tip]) => {
+    `<div class="config-group-label">${esc(group)}${group === "Risk limits" || group === "Session" ? (locked ? " · locked until 15:30" : "") : ""}</div><div class="config-grid">` +
+    fields.map(([key, label, tipText]) => {
       const v = Array.isArray(SETTINGS[key]) ? SETTINGS[key].join(", ") : SETTINGS[key];
-      return `<label class="field" title="${esc(tip)}">${esc(label)}<input data-setting="${key}" value="${esc(v)}"></label>`;
-    }).join("") + `</div>`).join("");
+      const dis = locked && RISK_FIELDS.includes(key) ? "disabled" : "";
+      return `<label class="field" title="${esc(tipText)}">${esc(label)}<input data-setting="${key}" value="${esc(v)}" ${dis}></label>`;
+    }).join("") + `</div>`).join("") +
+    `<p class="hint" style="margin-top:12px">Now: 1R = <b class="num">${money(SETTINGS.capital * SETTINGS.risk_pct / 100)}</b>, daily stop <b class="num">${money(-SETTINGS.capital * SETTINGS.daily_loss_pct / 100)}</b> (${(SETTINGS.daily_loss_pct / SETTINGS.risk_pct).toFixed(0)}R), exposure cap <b class="num">${money(SETTINGS.capital * SETTINGS.gross_exposure_x)}</b>.</p>`;
 }
 async function loadSettings() {
   const data = await api("/api/hv-settings");
-  SETTINGS = data.settings; CHARGES = data.charges;
+  SETTINGS = data.settings; CHARGES = data.charges; RISK_FIELDS = data.risk_fields || [];
+  $("pollSecs").textContent = SETTINGS.poll_seconds;
   renderSettings();
 }
 async function saveSettings() {
   const body = {};
   document.querySelectorAll("[data-setting]").forEach(el => {
-    const key = el.dataset.setting;
-    body[key] = key === "target_pcts" ? el.value.split(",").map(x => parseFloat(x)).filter(x => !isNaN(x)) : parseFloat(el.value);
+    if (el.disabled) return;
+    const key = el.dataset.setting, cur = SETTINGS[key];
+    if (typeof cur === "boolean") body[key] = /^(true|yes|1|on)$/i.test(el.value.trim());
+    else if (typeof cur === "string") body[key] = el.value.trim();
+    else body[key] = parseFloat(el.value);
   });
   try {
     const data = await post("/api/hv-settings", body);
     SETTINGS = data.settings; renderSettings();
     $("settingsMsg").textContent = "Saved.";
-    renderScoreboard(); LIVE_SIG = ""; renderLive();
+    pollNow();
     if (CAND) renderPre();
   } catch (e) { $("settingsMsg").textContent = "Could not save: " + e.message; }
 }
@@ -440,14 +600,14 @@ async function saveDay() {
       score: c.score, atr_pct: c.atr_pct, gap_pct: c.gap_pct, why: c.why, tier: c.tier,
       avg_fh_range_pct: c.stats.avg_fh_range_pct, two_up_days_pct: c.stats.two_up_days_pct,
       two_down_days_pct: c.stats.two_down_days_pct, avg_whipsaw: c.stats.avg_whipsaw,
-      gift_nifty: gift, implied_gap_pct: impliedGap(),
+      safety_warnings: c.safety_warnings, gift_nifty: gift, implied_gap_pct: impliedGap(),
     } : r.pre_meta;
     r.pre_meta = meta;
     return { symbol, bias: r.bias, tags: r.tags, note: r.note, pre_meta: meta };
   });
   try {
     await post("/api/hv-day", { trade_date: istDate(), gift_nifty: gift, note: $("dayNote").value, focus });
-    LIVE_SIG = ""; renderLive(); pollNow();
+    renderLive(); pollNow();
   } catch (e) { banner("Could not save today's notes/focus list: " + e.message, "error"); }
 }
 function niftyPrev() {
@@ -475,9 +635,10 @@ function renderPre() {
     $("preBody").innerHTML = rows.map(r => {
       const st = rowState(r.symbol), s = r.stats;
       const chips = TAGS.map(([k, label]) => `<span class="chip ${st.tags.includes(k) ? "on" : ""}" data-act="tag" data-sym="${esc(r.symbol)}" data-tag="${k}">${label}</span>`).join("");
+      const warns = (r.safety_warnings || []).map(w => ` <span class="chip warn" title="Safety check failed -- the live card still blocks entries on a price band of 5% or less">${esc(w)}</span>`).join("");
       return `<tr class="${st.focus ? "is-focus" : ""}">
         <td class="l"><input type="checkbox" data-act="focus" data-sym="${esc(r.symbol)}" ${st.focus ? "checked" : ""}></td>
-        <td class="sym">${esc(r.symbol)}${r.manual ? ' <span class="chip static">added</span>' : ""}<span class="why">${esc(r.why.join(" · "))}</span></td>
+        <td class="sym">${esc(r.symbol)}${r.manual ? ' <span class="chip static">added</span>' : ""}${warns}<span class="why">${esc(r.why.join(" · "))}</span></td>
         <td class="num">${rowScore(r).toFixed(1)}</td>
         <td class="num">${r.atr_pct === null ? "–" : r.atr_pct.toFixed(2)}</td>
         <td class="num">${s.avg_fh_range_pct.toFixed(2)}%</td>
@@ -545,189 +706,237 @@ async function buildWatchlist(force) {
 $("buildBtn").addEventListener("click", () => buildWatchlist(false));
 $("rebuildBtn").addEventListener("click", () => buildWatchlist(true));
 
-/* ---------------- scoreboard ---------------- */
-function renderScoreboard() {
+/* ---------------- risk bar ---------------- */
+function riskState() { return (LIVE && LIVE.risk) || (JOURNAL && JOURNAL.risk) || null; }
+function periodState() { return (LIVE && LIVE.period) || (JOURNAL && JOURNAL.period) || null; }
+function minutesUntil(hm) {
+  const [h, m] = hm.split(":").map(Number), [nh, nm] = istHM().split(":").map(Number);
+  return (h * 60 + m) - (nh * 60 + nm);
+}
+function renderRiskBar() {
   if (!SETTINGS) return;
-  const d = (JOURNAL && JOURNAL.today_summary) || { round_trips: 0, ticker_count: 0, net_pnl: 0, open_positions: 0, loss_limit_hit: false, done_for_day: false };
-  let openPnl = 0, anyOpenQuote = false;
-  if (JOURNAL) JOURNAL.positions.filter(p => p.trade_date === JOURNAL.today && p.summary.status === "open").forEach(p => {
-    const q = QUOTES[p.symbol];
-    if (q && q.last_price) { openPnl += unrealized(p, q.last_price).net; anyOpenQuote = true; }
+  const r = riskState(), p = periodState(), el = $("riskBar");
+  if (!r) { el.className = "section card"; el.innerHTML = `<span class="dim">Risk figures appear once the journal loads.</span>`; return; }
+  let openPnl = 0;
+  if (JOURNAL) JOURNAL.positions.filter(x => x.trade_date === JOURNAL.today && x.summary.status === "open").forEach(x => {
+    const q = LIVE && LIVE.quotes[x.symbol]; if (q && q.last_price) openPnl += unrealized(x, q.last_price).net;
   });
-  let msg = "";
-  if (d.loss_limit_hit) msg = `<div class="score-msg neg"><b>Daily loss limit reached</b> (${money(-SETTINGS.daily_loss_limit)}) -- your own rule says stop for the day.</div>`;
-  else if (d.done_for_day) msg = `<div class="score-msg pos"><b>Target reached</b> -- you're done for the day.</div>`;
-  const cls = d.loss_limit_hit ? "card--negative" : d.done_for_day ? "card--positive" : "";
-  const el = $("scoreboard");
+  const toEntry = minutesUntil(SETTINGS.entry_end), toFlat = minutesUntil(SETTINGS.flat_by);
+  const timeTxt = toEntry > 0 ? `${toEntry} min to last entry` : toFlat > 0 ? `${toFlat} min to flat` : "session over";
+  let msg = "", cls = "";
+  if (r.lockout) { cls = "card--negative"; msg = `<div class="score-msg neg"><b>Day stopped: ${esc(r.lockout)}.</b> Close anything still open in Kite and log off. Setups won't arm until tomorrow.</div>`; }
+  else if (r.cooloff_until) { cls = "card--warning"; msg = `<div class="score-msg" style="color:var(--accent)"><b>Cool-off until ${esc(r.cooloff_until)}</b> -- two losses in a row. Step away; setups won't arm until then.</div>`; }
+  else if (toFlat > 0 && toFlat <= 5) { cls = "card--warning"; msg = `<div class="score-msg" style="color:var(--accent)"><b>Flat in ${toFlat} minutes</b> -- close everything by ${esc(SETTINGS.flat_by)}.</div>`; }
+  const sizeNote = p && p.size_mult < 1 ? `<div class="score-msg" style="color:var(--accent)">Half size today: ${esc(p.size_reasons.join("; "))}.</div>` : "";
   el.className = "section card " + cls;
   el.innerHTML = `<div class="score-grid">
-    <div class="score-item"><div class="k">Round trips</div><div class="v num">${d.round_trips} / ${SETTINGS.target_round_trips}</div></div>
-    <div class="score-item"><div class="k">Tickers</div><div class="v num">${d.ticker_count} / ${SETTINGS.max_tickers}</div></div>
-    <div class="score-item"><div class="k">Net today (after charges)</div><div class="v num ${sgn(d.net_pnl)}">${money(d.net_pnl, true)}</div></div>
-    <div class="score-item"><div class="k">Open positions (est. if exited now)</div><div class="v num ${sgn(openPnl)}">${d.open_positions ? (anyOpenQuote ? money(openPnl, true) : "–") : "none"}</div></div>
-    <div class="score-item"><div class="k">Loss limit</div><div class="v num dim">${money(-SETTINGS.daily_loss_limit)}</div></div>
-  </div>${msg}`;
+    <div class="score-item"><div class="k">Day P&amp;L ${tip("day_r")}</div><div class="v num ${sgn(r.day_r)}">${rr(r.day_r)}</div><div class="s num">${money(r.realized, true)} · stop at −${r.daily_limit_r}R (${money(-r.daily_limit)})</div></div>
+    <div class="score-item"><div class="k">Open ${tip("open_risk")}</div><div class="v num">${r.open_risk_r.toFixed(1)}R</div><div class="s num">${r.open_positions} of ${SETTINGS.max_open_positions} positions${r.open_positions ? " · " + money(openPnl, true) + " now" : ""}</div></div>
+    <div class="score-item"><div class="k">Round trips ${tip("trips")}</div><div class="v num">${r.round_trips} / ${r.max_round_trips}</div><div class="s">loss streak ${r.loss_streak} ${tip("streak")}</div></div>
+    <div class="score-item"><div class="k">Exposure ${tip("exposure")}</div><div class="v num">${money(r.exposure)}</div><div class="s num">cap ${money(r.exposure_cap)}</div></div>
+    <div class="score-item"><div class="k">1R</div><div class="v num">${money(r.one_r)}</div><div class="s">${esc(timeTxt)}</div></div>
+    ${p ? `<div class="score-item"><div class="k">Week · month</div><div class="v num ${sgn(p.week_net)}">${money(p.week_net, true)}</div><div class="s num">month drawdown ${money(p.month_drawdown)} / ${money(p.monthly_limit)}${p.rolling20_r !== null ? ` · last ${p.rolling20_n}: ${rr(p.rolling20_r)} avg` : ""}</div></div>` : ""}
+  </div>${msg}${sizeNote}`;
 }
 
 /* ---------------- live tab ---------------- */
 function focusSymbols() { return Object.entries(ROWS).filter(([, r]) => r.focus).map(([s]) => s); }
-function liveSignature() {
-  return focusSymbols().map(s => { const p = openPositionFor(s); return s + ":" + (p ? p.id + "/" + p.summary.open_qty : "-"); }).join("|");
+function stripSymbols() {
+  if (!CAND || !SETTINGS) return [];
+  const f = new Set(focusSymbols());
+  return CAND.ranked.map(r => r.symbol).filter(s => !f.has(s)).slice(0, SETTINGS.strip_size);
+}
+function markRow(state, label, value, key, sub) {
+  const mark = state === true ? '<span class="mark ok">✓</span>' : state === false ? '<span class="mark bad">✗</span>' : '<span class="mark no">○</span>';
+  return `<div class="check-row ${sub ? "sub-check" : ""}"><span>${mark}${esc(label)}${tip(key)}</span><span class="num">${value}</span></div>`;
 }
 function renderLive() {
-  const sig = liveSignature();
-  if (sig === LIVE_SIG && $("liveGrid").children.length) return;
-  LIVE_SIG = sig; CARDS.clear();
   const syms = focusSymbols();
   if (!syms.length) {
-    $("liveGrid").innerHTML = `<div class="card"><h3>No focus tickers yet</h3><p class="sub">Tick the tickers you'll trade in the Pre-open tab; they appear here as live cards.</p></div>`;
+    CARDS.clear();
+    $("liveGrid").innerHTML = `<div class="card"><h3>No focus tickers yet</h3><p class="sub">Tick the tickers you'll trade in the Pre-open tab, then press Start watch. They appear here as live cards.</p></div>`;
     return;
   }
-  $("liveGrid").innerHTML = "";
+  [...CARDS.keys()].forEach(s => { if (!syms.includes(s)) { CARDS.get(s).el.remove(); CARDS.delete(s); } });
+  if (!CARDS.size) $("liveGrid").innerHTML = "";
   syms.forEach(sym => {
-    const st = rowState(sym), pos = openPositionFor(sym);
-    const card = document.createElement("div");
-    card.className = "card";
-    card.dataset.sym = sym;
-    const isLong = pos ? pos.side === "long" : st.bias !== "short";
-    card.innerHTML = `
-      <div class="live-head"><div><span class="sym">${esc(sym)}</span><span class="chip static">${esc(pos ? pos.side + " open" : st.bias + " bias")}</span>
-        ${st.tags.map(t => `<span class="chip static">${esc((TAGS.find(x => x[0] === t) || [t, t])[1])}</span>`).join("")}</div>
-        <div class="price num" data-f="ltp">–</div></div>
-      <div class="live-sub num"><span data-f="chgPrev">–</span> vs prev close · <span data-f="chgOpen">–</span> vs open</div>
-      <div class="metrics num">
-        <div class="metric"><div class="k">Open</div><div class="v" data-f="open">–</div></div>
-        <div class="metric"><div class="k">Day low</div><div class="v" data-f="low">–</div></div>
-        <div class="metric"><div class="k">Day high</div><div class="v" data-f="high">–</div></div>
-        <div class="metric"><div class="k">Prev close</div><div class="v" data-f="prev">–</div></div>
-        <div class="metric"><div class="k">VWAP</div><div class="v" data-f="vwap">–</div></div>
-        <div class="metric"><div class="k">vs VWAP</div><div class="v" data-f="vsVwap">–</div></div>
-        <div class="metric"><div class="k">Bounce off low</div><div class="v" data-f="bounce">–</div></div>
-        <div class="metric"><div class="k">Off high</div><div class="v" data-f="offHigh">–</div></div>
-      </div>
-      ${pos ? positionBlock(pos) : ladderBlock()}
-      <div class="block"><div class="title">Log a trade <span style="text-transform:none;letter-spacing:0">(records only -- place the order in Kite)</span></div>
-        <div class="act-row">
-          <label class="field">Price<input data-f="px" type="number" step="0.05"></label>
-          <label class="field">Qty<input data-f="qty" type="number" step="1" min="1"></label>
-          ${pos ? `<button class="buy small" data-do="add">Add (scale in)</button><button class="sell small" data-do="exit">Exit</button>`
-                : `<button class="buy small" data-do="long">Bought (long)</button><button class="sell small" data-do="short">Sold short</button>`}
-        </div>
-        <div class="act-msg" data-f="msg"></div>
-      </div>`;
-    if (pos) card.dataset.pos = pos.id;
-    card.querySelectorAll("[data-f=px],[data-f=qty],[data-f=entry]").forEach(inp => inp.addEventListener("input", () => { inp.dataset.touched = "1"; updateCard(card); }));
-    card.querySelectorAll("[data-do]").forEach(btn => btn.addEventListener("click", () => logTrade(card, btn.dataset.do)));
-    $("liveGrid").appendChild(card);
-    CARDS.set(sym, card);
-    if (pos) {  // exits default to the whole open quantity
-      card.querySelector("[data-f=qty]").value = pos.summary.open_qty;
+    if (!CARDS.has(sym)) {
+      const el = document.createElement("div");
+      el.className = "card"; el.dataset.sym = sym;
+      el.innerHTML = `<div data-f="view"></div><div data-f="act"></div>`;
+      $("liveGrid").appendChild(el);
+      CARDS.set(sym, { el, actSig: null });
     }
-    updateCard(card);
+    updateCard(sym);
   });
 }
-function ladderBlock() {
-  return `<div class="block"><div class="title">If you enter at <input data-f="entry" type="number" step="0.05" style="width:90px;padding:3px 6px"> · net of charges</div>
-    <div class="ladder num" data-f="ladder"></div></div>`;
-}
-function positionBlock(pos) {
-  const s = pos.summary;
-  return `<div class="block"><div class="title">Open position · ${esc(pos.side)}</div>
-    <div class="ladder num">
-      <div><div class="k">Open qty</div>${s.open_qty}</div>
-      <div><div class="k">Avg entry</div>${num2(s.avg_entry)}</div>
-      <div><div class="k">Break-even</div><span data-f="be">–</span></div>
-      <div><div class="k">Est. net now</div><span data-f="unreal">–</span></div>
-    </div>
-    <div class="ladder num" style="margin-top:8px" data-f="ladder"></div></div>`;
-}
-function updateCard(card) {
-  const sym = card.dataset.sym, q = QUOTES[sym], f = k => card.querySelector(`[data-f=${k}]`);
+function updateCard(sym) {
+  const c = CARDS.get(sym); if (!c) return;
+  const ev = LIVE && LIVE.cards ? LIVE.cards[sym] : null, q = LIVE ? LIVE.quotes[sym] : null;
   const pos = openPositionFor(sym), st = rowState(sym);
-  const side = pos ? pos.side : (st.bias === "short" ? "short" : "long");
-  const ltp = q && q.last_price;
-  const setText = (k, html, cls) => {
-    const el = f(k);
-    if (!el) return;
-    el.innerHTML = html;
-    if (cls !== undefined) { el.classList.remove("pos", "neg"); if (cls) el.classList.add(cls); }
-  };
-  if (q) {
-    setText("ltp", num2(ltp));
-    const chgPrev = q.prev_close ? (ltp - q.prev_close) / q.prev_close * 100 : null;
-    const chgOpen = q.open ? (ltp - q.open) / q.open * 100 : null;
-    setText("chgPrev", pct(chgPrev), sgn(chgPrev)); setText("chgOpen", pct(chgOpen), sgn(chgOpen));
-    setText("open", num2(q.open)); setText("low", num2(q.low)); setText("high", num2(q.high)); setText("prev", num2(q.prev_close));
-    setText("vwap", num2(q.vwap));
-    const vs = q.vwap ? (ltp - q.vwap) / q.vwap * 100 : null;
-    setText("vsVwap", pct(vs), sgn(vs));
-    setText("bounce", q.low ? pct((ltp - q.low) / q.low * 100) : "–");
-    setText("offHigh", q.high ? pct((ltp - q.high) / q.high * 100) : "–");
-    const px = f("px");
-    if (px && !px.dataset.touched) px.value = ltp.toFixed(2);
-    const entry = f("entry");
-    if (entry && !entry.dataset.touched) entry.value = ltp.toFixed(2);
+  const stage = pos ? "trade" : (ev ? ev.stage : "watching");
+  c.el.className = "card" + (stage === "entry" ? (ev.suggestion && ev.suggestion.ok ? " card--entry" : " card--negative") : stage === "trade" ? " card--positive" : stage === "blocked" ? " card--negative" : stage === "armed" ? " card--warning" : "");
+  const m = (ev && ev.metrics) || {}, dt = ev && ev.day_type, ch = (ev && ev.checks) || {};
+  const ltp = (q && q.last_price) || m.price;
+  const chg = q && q.prev_close && ltp ? (ltp - q.prev_close) / q.prev_close * 100 : null;
+  const tags = st.tags.map(t => `<span class="chip static">${esc((TAGS.find(x => x[0] === t) || [t, t])[1])}</span>`).join("");
+  let html = `<div class="live-head"><div><span class="sym">${esc(sym)}</span>${tags}</div>
+      <div style="text-align:right"><div class="price num">${num2(ltp)}</div><span class="pill pill--${stage}">${STAGE_LABEL[stage] || stage}</span></div></div>
+    <div class="live-sub num">${chg === null ? "" : `<span class="${sgn(chg)}">${pct(chg)}</span> vs prev close · `}VWAP ${num2(m.vwap)}${tip("vwap")}${ev && ev.size_mult < 1 ? ` · <span style="color:var(--accent)">half size</span>` : ""}</div>`;
+  if (!ev) {
+    html += `<div class="dim" style="font-size:13px">${LIVE ? "No data for this stock yet -- press Start watch." : "Waiting for the first refresh…"}</div>`;
+  } else {
+    const exh = m.exhaustion || [];
+    html += `<div class="checks">
+      ${markRow(dt ? dt.state !== "Trend down" : null, "Day type", dt ? `${esc(dt.state)} <span class="dim">· ${esc(dt.detail)}</span>` : "–", "day_type")}
+      ${markRow(m.stretch_sigma !== undefined ? (m.stretch_sigma <= -SETTINGS.stretch_sigma || m.off_high_atr >= SETTINGS.stretch_atr) : null, "Stretch", m.stretch_sigma !== undefined ? `${m.stretch_sigma.toFixed(1)}σ · ${m.off_high_atr.toFixed(2)} ATR off high` : "–", "stretch")}
+      ${markRow(m.exhaustion ? exh.length >= 2 : null, "Exhaustion", m.exhaustion ? `${exh.length} of 4` : "–", "exhaustion")}
+      ${markRow(m.rsi !== undefined && m.rsi !== null ? exh.includes("rsi") : null, "RSI(5)", m.rsi ?? "–", "rsi", true)}
+      ${markRow(m.exhaustion ? exh.includes("volume") : null, "Volume spike", m.volume_x ? m.volume_x + "×" : (m.last_volume_x ? `last bar ${m.last_volume_x}×` : "–"), "volume", true)}
+      ${markRow(m.exhaustion ? exh.includes("wick") : null, "Lower wick", m.wick_frac !== undefined ? Math.round(m.wick_frac * 100) + "% of bar" : "–", "wick", true)}
+      ${markRow(m.exhaustion ? exh.includes("level") : null, "At a level", m.level ? esc(m.level) : "–", "level", true)}
+      ${markRow(m.confirmation ? (m.confirm_bars_ago < SETTINGS.entry_valid_bars) : null, "Confirmation", m.confirmation ? `${esc(m.confirmation)}${m.confirm_bars_ago ? ` <span class="dim">· ${m.confirm_bars_ago} bars ago</span>` : ""}` : "waiting", "confirmation")}
+      ${markRow(ch.spread_pct !== undefined ? ch.spread_pct <= SETTINGS.max_spread_pct : null, "Spread", ch.spread_pct !== undefined ? ch.spread_pct.toFixed(2) + "%" : "–", "spread")}
+      ${markRow(ch.lower_band_pct !== undefined ? ch.lower_band_pct >= SETTINGS.band_no_entry_pct : null, "Band distance", ch.lower_band_pct !== undefined ? `${ch.lower_band_pct.toFixed(1)}% to lower${ch.band_width_pct !== undefined ? ` · band ${ch.band_width_pct}%` : ""}` : "–", "band")}
+    </div>`;
+    if (ev.reasons && ev.reasons.length) html += `<div class="reasons">${ev.reasons.map(esc).join("<br>")}</div>`;
+    if (stage === "armed" && m.confirmation === null) html += `<div class="hint">Get ready: open the chart in Kite. Don't buy until a confirmation fires.</div>`;
   }
-  // quantity follows the price unless typed (or fixed to the open qty for an open position)
-  const qtyEl = f("qty");
-  if (qtyEl && !pos && !qtyEl.dataset.touched) {
-    const basis = parseFloat((f("px") || {}).value) || ltp;
-    if (basis) qtyEl.value = Math.max(1, Math.floor(SETTINGS.amount_per_trade / basis));
-  }
-  // targets
-  const ladder = f("ladder");
-  if (ladder) {
-    let base, qty;
-    if (pos) { base = pos.summary.avg_entry; qty = pos.summary.open_qty; }
-    else { base = parseFloat((f("entry") || {}).value) || ltp; qty = base ? Math.max(1, Math.floor(SETTINGS.amount_per_trade / base)) : 0; }
-    if (base && qty) {
-      const cells = [`<div><div class="k">Break-even</div>${num2(targetPrice(side, base, qty, 0))}</div>`]
-        .concat(SETTINGS.target_pcts.slice(0, 3).map(t => `<div><div class="k">+${t}% net</div>${num2(targetPrice(side, base, qty, t))}</div>`));
-      ladder.innerHTML = cells.join("");
-      if (pos) setText("be", num2(targetPrice(side, base, qty, 0)));
-    }
-  }
-  if (pos && ltp) {
-    const u = unrealized(pos, ltp);
-    setText("unreal", `${money(u.net, true)} (${pct(u.pct)})`, sgn(u.net));
-  }
-}
-function updateAllCards() { CARDS.forEach(updateCard); }
+  c.el.querySelector("[data-f=view]").innerHTML = html;
 
-async function logTrade(card, action) {
-  const sym = card.dataset.sym, msg = card.querySelector("[data-f=msg]");
-  const price = parseFloat(card.querySelector("[data-f=px]").value), qty = parseInt(card.querySelector("[data-f=qty]").value, 10);
+  // The action area is only rebuilt when what it's for changes, so typed values survive refreshes.
+  const s = ev && ev.suggestion;
+  const actSig = pos ? `pos:${pos.id}:${pos.summary.open_qty}:${(ev && ev.position) ? JSON.stringify([ev.position.prompts, ev.position.warnings, ev.position.r_now, ev.position.time_stop_left]) : ""}`
+    : (stage === "entry" && s) ? `entry:${ev.signal_id}:${s.entry}:${s.qty}:${s.ok}` : "manual";
+  if (actSig === c.actSig) return;
+  c.actSig = actSig;
+  c.el.querySelector("[data-f=act]").innerHTML = pos ? positionBlock(sym, pos, ev) : (stage === "entry" && s) ? entryBlock(sym, ev) : manualBlock(sym);
+  wireActions(c.el, sym);
+}
+function entryBlock(sym, ev) {
+  const s = ev.suggestion;
+  const caps = Object.entries(s.caps).map(([k, v]) => `${k} ${v}`).join(" · ");
+  return `<div class="block"><div class="title">Suggested order${tip("size")}</div>
+    <div class="kv num">
+      <div><div class="k">Limit buy</div><b>${s.qty} @ ${num2(s.entry)}</b></div>
+      <div><div class="k">Stop (SL order)</div>${num2(s.stop)}</div>
+      <div><div class="k">Target · sell half</div>${num2(s.target)}</div>
+      <div><div class="k">Risk · net R:R${tip("net_rr")}</div>${money(s.risk_amount)} · ${s.net_rr.toFixed(2)}</div>
+    </div>
+    <div class="hint">Caps: ${esc(caps)} (binding: ${esc(s.binding_cap)}) · valid ${s.valid_bars_left} more bar${s.valid_bars_left === 1 ? "" : "s"} · confirmed on the ${esc(s.signal_bar)} bar</div>
+    ${s.ok ? "" : `<div class="reasons">Skip: ${s.fails.map(esc).join("; ")}</div>`}
+    <div class="hint">In Kite: place the limit buy; the moment it fills, place the stop-loss order at ${num2(s.stop)}. Then press I'm in.</div>
+    <div class="act-row">
+      <label class="field">Fill price<input data-f="px" type="number" step="0.05" value="${s.entry}"></label>
+      <label class="field">Qty<input data-f="qty" type="number" step="1" min="1" value="${s.qty}"></label>
+      <label class="field">Stop<input data-f="stop" type="number" step="0.05" value="${s.stop}"></label>
+      <button class="buy small" data-do="in" data-signal="${ev.signal_id || ""}">I'm in</button>
+    </div>
+    <div class="act-row">
+      <label class="field grow">Skip reason (optional)<input data-f="reason" type="text" placeholder="e.g. chart looked weak" style="width:100%;font-family:'Space Grotesk',sans-serif"></label>
+      <button class="secondary small" data-do="skip" data-signal="${ev.signal_id || ""}">Skip</button>
+    </div>
+    <div class="act-msg" data-f="msg"></div></div>`;
+}
+function manualBlock(sym) {
+  return `<details class="block"><summary>Log a trade you took without a suggestion</summary>
+    <div class="hint">Recorded as a rule break if it's against the limits or has no stop.</div>
+    <div class="act-row">
+      <label class="field">Price<input data-f="px" type="number" step="0.05"></label>
+      <label class="field">Qty<input data-f="qty" type="number" step="1" min="1"></label>
+      <label class="field">Stop<input data-f="stop" type="number" step="0.05"></label>
+      <button class="buy small" data-do="long">Bought (long)</button>
+      ${SETTINGS.longs_only ? "" : `<button class="sell small" data-do="short">Sold short</button>`}
+    </div><div class="act-msg" data-f="msg"></div></details>`;
+}
+function positionBlock(sym, pos, ev) {
+  const s = pos.summary, mg = (ev && ev.position) || {}, q = LIVE && LIVE.quotes[sym];
+  const u = q && q.last_price ? unrealized(pos, q.last_price) : null;
+  const halfPrompt = (mg.prompts || []).find(p => p.kind === "sell_half");
+  return `<div class="block"><div class="title">In trade · ${esc(pos.side)}</div>
+    <div class="kv num">
+      <div><div class="k">Open qty · avg</div>${s.open_qty} @ ${num2(s.avg_entry)}</div>
+      <div><div class="k">P&amp;L now${tip("r")}</div><span class="${sgn(mg.r_now)}">${rr(mg.r_now)}</span>${u ? ` <span class="dim">${money(u.net, true)}</span>` : ""}</div>
+      <div><div class="k">Planned stop</div>${pos.planned_stop ? num2(pos.planned_stop) : '<span class="neg">none</span>'}${mg.stop_dist_pct !== undefined && mg.stop_dist_pct !== null ? ` <span class="dim">(${mg.stop_dist_pct}% away)</span>` : ""}</div>
+      <div><div class="k">To VWAP target</div>${mg.to_target_pct !== undefined && mg.to_target_pct !== null ? pct(mg.to_target_pct) : "–"}</div>
+      <div><div class="k">Time stop${tip("time_stop")}</div>${mg.time_stop_left !== undefined ? mg.time_stop_left + " min left" : "–"}</div>
+      <div><div class="k">Band distance${tip("band")}</div>${ev && ev.checks && ev.checks.lower_band_pct !== undefined ? ev.checks.lower_band_pct.toFixed(1) + "%" : "–"}</div>
+    </div>
+    ${(mg.warnings || []).map(w => `<div class="prompt warn">${esc(w)}</div>`).join("")}
+    ${(mg.prompts || []).map(p => `<div class="prompt">→ ${esc(p.text)}</div>`).join("")}
+    ${!(mg.warnings || []).length && !(mg.prompts || []).length ? `<div class="hint">Nothing to do yet: your stop-loss order is working in Kite.</div>` : ""}
+    <div class="act-row">
+      <label class="field">Price<input data-f="px" type="number" step="0.05" value="${q && q.last_price ? q.last_price.toFixed(2) : ""}"></label>
+      <label class="field">Qty<input data-f="qty" type="number" step="1" min="1" value="${halfPrompt ? halfPrompt.qty : s.open_qty}"></label>
+      <button class="sell small" data-do="exit">Closed / sold</button>
+      ${(mg.prompts || []).some(p => p.kind === "add") ? `<button class="buy small" data-do="add">Add second leg</button>` : ""}
+    </div><div class="act-msg" data-f="msg"></div></div>`;
+}
+function wireActions(cardEl, sym) {
+  cardEl.querySelectorAll("[data-do]").forEach(btn => btn.addEventListener("click", () => logTrade(cardEl, sym, btn)));
+}
+async function logTrade(card, sym, btn) {
+  const action = btn.dataset.do, msg = card.querySelector("[data-f=msg]");
+  const val = k => { const el = card.querySelector(`[data-f=${k}]`); return el ? el.value : ""; };
   msg.className = "act-msg";
-  if (!price || !qty) { msg.className = "act-msg err"; msg.textContent = "Enter a price and quantity."; return; }
-  const btns = card.querySelectorAll("button"); btns.forEach(b => b.disabled = true);
   try {
-    if (action === "long" || action === "short") {
-      const st = rowState(sym);
-      await post("/api/hv-position-open", { symbol: sym, side: action, qty, price,
-        signal_meta: { bias: st.bias, tags: st.tags, pre_meta: st.pre_meta } });
+    if (action === "skip") {
+      if (btn.dataset.signal) await post("/api/hv-signal-action", { signal_id: parseInt(btn.dataset.signal, 10), action: "skipped", reason: val("reason") });
+      msg.textContent = "Skipped -- it's in the signal log and will still be scored.";
+      return;
+    }
+    const price = parseFloat(val("px")), qty = parseInt(val("qty"), 10);
+    if (!price || !qty) { msg.className = "act-msg err"; msg.textContent = "Enter a price and quantity."; return; }
+    card.querySelectorAll("button").forEach(b => b.disabled = true);
+    const pos = openPositionFor(sym);
+    if (action === "in" || action === "long" || action === "short") {
+      const st = rowState(sym), ev = LIVE && LIVE.cards[sym];
+      const res = await post("/api/hv-position-open", { symbol: sym, side: action === "short" ? "short" : "long", qty, price,
+        planned_stop: val("stop") === "" ? null : parseFloat(val("stop")), signal_id: btn.dataset.signal ? parseInt(btn.dataset.signal, 10) : null,
+        setup_tag: action === "in" ? "dip-buy" : null,
+        signal_meta: { bias: st.bias, tags: st.tags, pre_meta: st.pre_meta, suggestion: ev ? ev.suggestion : null, metrics: ev ? ev.metrics : null } });
+      if (res.rule_broken) banner(`${sym}: logged, and recorded as a rule break -- ${res.rule_note}.`, "info");
     } else {
-      await post("/api/hv-fill", { position_id: parseInt(card.dataset.pos, 10), kind: action === "add" ? "entry" : "exit", qty, price });
+      await post("/api/hv-fill", { position_id: pos.id, kind: action === "add" ? "entry" : "exit", qty, price });
     }
     await loadJournal();
-    LIVE_SIG = ""; renderLive(); renderScoreboard();
+    CARDS.get(sym).actSig = null;
+    pollNow();
   } catch (e) {
     msg.className = "act-msg err"; msg.textContent = e.message;
-    btns.forEach(b => b.disabled = false);
+    card.querySelectorAll("button").forEach(b => b.disabled = false);
   }
+}
+function renderStrip() {
+  const box = $("stripBox"), syms = stripSymbols();
+  if (!LIVE || !syms.length) { box.style.display = "none"; return; }
+  const items = syms.map(s => [s, LIVE.cards[s]]).filter(([, ev]) => ev);
+  box.style.display = "";
+  box.innerHTML = `<span class="dim" style="font-size:12px;margin-right:12px">Also setting up:</span>` + (items.map(([s, ev]) =>
+    `<span class="strip-item"><b>${esc(s)}</b><span class="pill pill--${ev.stage}">${STAGE_LABEL[ev.stage]}</span>${ev.metrics && ev.metrics.stretch_sigma !== undefined ? `<span class="dim num">${ev.metrics.stretch_sigma.toFixed(1)}σ</span>` : ""}</span>`).join("") || `<span class="dim">nothing yet</span>`) +
+    `<span class="hint" style="display:block;margin-top:6px">Tick a stock in the Pre-open tab to give it a full card.</span>`;
+}
+function renderNifty() {
+  if (!LIVE || !LIVE.nifty) { $("niftyLine").textContent = ""; return; }
+  const n = LIVE.nifty, cls = n.state === "Trend down" ? "neg" : n.state === "Trend up" ? "pos" : "";
+  $("niftyLine").innerHTML = `Nifty ${num2(n.last_price)} · <span class="${cls}"><b>${esc(n.state)}</b></span> <span class="dim">· ${esc(n.detail || "")}</span>${tip("day_type")}${n.state === "Trend down" ? ` · <span class="neg">dip-buys blocked, max 1 position</span>` : ""}`;
 }
 
 /* ---------------- polling + alerts ---------------- */
 let audioCtx = null;
-function beep() {
+function beep(times = 1) {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-    o.connect(g); g.connect(audioCtx.destination);
-    o.frequency.value = 880; g.gain.value = 0.15;
-    o.start(); o.stop(audioCtx.currentTime + 0.25);
+    for (let i = 0; i < times; i++) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value = times > 1 ? 1100 : 760; g.gain.value = 0.15;
+      const t = audioCtx.currentTime + i * 0.35;
+      o.start(t); o.stop(t + 0.22);
+    }
   } catch { /* audio blocked */ }
 }
-function alertOnce(key, title, body) {
+function alertOnce(key, title, body, loud) {
   let seen = [];
   try { seen = JSON.parse(sessionStorage.getItem("hv_alerts_" + istDate()) || "[]"); } catch {}
   if (seen.includes(key)) return;
@@ -738,36 +947,53 @@ function alertOnce(key, title, body) {
   t.onclick = () => t.remove();
   $("toasts").appendChild(t);
   setTimeout(() => t.remove(), 60000);
-  beep();
+  beep(loud ? 3 : 1);
   if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body });
 }
 function checkAlerts() {
+  if (!LIVE) return;
   focusSymbols().forEach(sym => {
-    const q = QUOTES[sym]; if (!q || !q.last_price || !q.open) return;
-    const ltp = q.last_price, belowOpen = (q.open - ltp) / q.open * 100;
-    if (belowOpen >= SETTINGS.dip_alert_pct) alertOnce(sym + ":dip", `${sym} dipped`, `${belowOpen.toFixed(1)}% below the open (₹${num2(ltp)}).`);
-    const lowBelow = q.low ? (q.open - q.low) / q.open * 100 : 0, bounce = q.low ? (ltp - q.low) / q.low * 100 : 0;
-    if (lowBelow >= SETTINGS.dip_alert_pct && bounce >= SETTINGS.bounce_alert_pct)
-      alertOnce(sym + ":bounce", `${sym} bouncing`, `+${bounce.toFixed(1)}% off the day's low of ₹${num2(q.low)}.`);
-    const pos = openPositionFor(sym);
-    if (pos) {
-      const u = unrealized(pos, ltp), t1 = SETTINGS.target_pcts[0];
-      if (u.pct >= t1) alertOnce(`${sym}:${pos.id}:target`, `${sym} target reached`, `Est. ${pct(u.pct)} net if exited now (₹${num2(ltp)}).`);
-      if (u.pct <= -t1) alertOnce(`${sym}:${pos.id}:loss`, `${sym} position down`, `Est. ${pct(u.pct)} net if exited now (₹${num2(ltp)}).`);
-    }
+    const ev = LIVE.cards[sym]; if (!ev) return;
+    if (ev.stage === "armed") alertOnce(`${sym}:armed:${ev.episode}`, `${sym}: setup armed`, "Get ready -- open the chart. Don't buy until it confirms.");
+    if (ev.stage === "entry" && ev.suggestion && ev.suggestion.ok)
+      alertOnce(`${sym}:entry:${ev.episode}`, `${sym}: entry zone`, `Limit buy ${ev.suggestion.qty} @ ${num2(ev.suggestion.entry)}, stop ${num2(ev.suggestion.stop)}.`, true);
+    ((ev.position && ev.position.warnings) || []).forEach(w => alertOnce(`${sym}:warn:${w}`, `${sym}`, w, true));
+    ((ev.position && ev.position.prompts) || []).forEach(p => alertOnce(`${sym}:prompt:${p.kind}`, `${sym}`, p.text));
   });
+  const r = LIVE.risk;
+  if (r && r.lockout) alertOnce(`lockout:${r.lockout}`, "Day stopped", r.lockout + ". Close anything open in Kite.", true);
+  if (r && r.cooloff_until) alertOnce(`cool:${r.cooloff_until}`, "Cool-off", `Two losses in a row. No setups until ${r.cooloff_until}.`);
 }
-async function pollNow() {
-  const syms = focusSymbols();
-  if (!syms.length || !LOGGED_IN) { $("liveStatus").textContent = syms.length ? "log in to see prices" : ""; return; }
+async function startWatch(symbols, quiet) {
+  if (!symbols.length) return;
+  symbols.forEach(s => WATCH_REQUESTED.add(s));
+  $("watchBtn").disabled = true;
+  $("liveStatus").textContent = "Loading levels, ATR and normal volume…";
   try {
-    const data = await api("/api/hv-live?symbols=" + encodeURIComponent(syms.join(",")));
-    QUOTES = data.quotes || {};
-    $("liveStatus").textContent = "prices updated " + new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
-    renderLive(); updateAllCards(); renderScoreboard(); checkAlerts();
+    const res = await post("/api/hv-watch-start", { symbols });
+    const failed = Object.entries(res.failed || {});
+    if (failed.length) banner("Couldn't watch " + failed.map(([s, why]) => `${s} (${why})`).join(", "), "info");
+    else if (!quiet) banner("");
   } catch (e) {
-    $("liveStatus").textContent = "price refresh failed: " + e.message;
-  }
+    if (!quiet) banner("Start watch failed: " + e.message, "error");
+  } finally { $("watchBtn").disabled = false; }
+}
+$("watchBtn").addEventListener("click", async () => { await startWatch([...focusSymbols(), ...stripSymbols()], false); pollNow(); });
+let polling = false;
+async function pollNow() {
+  const syms = focusSymbols(), strip = stripSymbols();
+  if ((!syms.length && !strip.length) || !LOGGED_IN) { $("liveStatus").textContent = syms.length ? "log in to see prices" : ""; renderRiskBar(); return; }
+  if (polling) return;
+  polling = true;
+  try {
+    LIVE = await api(`/api/hv-live?symbols=${encodeURIComponent(syms.join(","))}&strip=${encodeURIComponent(strip.join(","))}`);
+    $("liveStatus").textContent = "updated " + new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
+    const missing = (LIVE.missing_context || []).filter(s => !WATCH_REQUESTED.has(s));
+    renderLive(); renderStrip(); renderNifty(); renderRiskBar(); checkAlerts(); renderLiveSummary();
+    if (missing.length) { await startWatch(missing, true); polling = false; return pollNow(); }
+  } catch (e) {
+    $("liveStatus").textContent = "refresh failed: " + e.message;
+  } finally { polling = false; }
 }
 function startPolling() {
   clearInterval(pollTimer);
@@ -782,27 +1008,65 @@ $("alertsBtn").addEventListener("click", async () => {
   $("alertsBtn").textContent = perm === "granted" ? "Browser alerts enabled" : "Alerts: on-page only (notifications blocked)";
 });
 
+/* ---------------- day summary (Live after the session, top of Journal) ---------------- */
+let TODAY_SIGNALS = null;
+function daySummaryHTML() {
+  if (!JOURNAL) return "";
+  const today = JOURNAL.today, ps = JOURNAL.positions.filter(p => p.trade_date === today);
+  const closed = ps.filter(p => p.summary.status === "closed"), d = JOURNAL.days.find(x => x.date === today);
+  const rs = closed.map(p => p.r).filter(x => x !== null && x !== undefined);
+  const best = rs.length ? Math.max(...rs) : null, worst = rs.length ? Math.min(...rs) : null;
+  let sig = "";
+  if (TODAY_SIGNALS) {
+    const entries = TODAY_SIGNALS.filter(s => s.stage === "entry" && s.source === "live");
+    const by = a => entries.filter(s => (s.action || "pending") === a);
+    const desc = arr => { const o = {}; arr.forEach(s => { const k = s.outcome ? s.outcome.replace("_", " ") : "not scored yet"; o[k] = (o[k] || 0) + 1; }); return Object.entries(o).map(([k, v]) => `${v} ${k}`).join(", "); };
+    const parts = ["taken", "skipped", "lapsed", "pending"].map(a => [a, by(a)]).filter(([, v]) => v.length).map(([a, v]) => `${v.length} ${a}${desc(v) ? ` (${desc(v)})` : ""}`);
+    sig = `<p class="sub" style="margin:10px 0 0">Signals today: ${entries.length ? esc(entries.length + " entry signals: " + parts.join("; ")) : "none"}. ${entries.some(s => !s.outcome) ? "Unscored ones are scored once their 30 minutes have passed (Signals tab → Score)." : ""}</p>`;
+  }
+  return `<h3>Today</h3><div class="score-grid">
+    <div class="score-item"><div class="k">Trades</div><div class="v num">${closed.length}${ps.length > closed.length ? ` <span class="dim" style="font-size:13px">+${ps.length - closed.length} open</span>` : ""}</div></div>
+    <div class="score-item"><div class="k">Win rate</div><div class="v num">${closed.length ? Math.round(closed.filter(p => p.summary.net_pnl > 0).length / closed.length * 100) + "%" : "–"}</div></div>
+    <div class="score-item"><div class="k">Total ${tip("r")}</div><div class="v num ${sgn(d && d.r)}">${rr(d ? d.r : 0)}</div><div class="s num">${money(d ? d.net_pnl : 0, true)}</div></div>
+    <div class="score-item"><div class="k">Best · worst</div><div class="v num">${rr(best)} · ${rr(worst)}</div></div>
+    <div class="score-item"><div class="k">Rule breaks</div><div class="v num ${d && d.rule_breaks ? "neg" : ""}">${d ? d.rule_breaks : 0}</div></div>
+  </div>${sig}<p class="hint">Check each trade's prices against your Kite tradebook, and tick "rule broken" honestly where it applies (Journal → click a trade).</p>`;
+}
+function renderLiveSummary() {
+  const r = riskState(), box = $("liveSummary");
+  const over = minutesUntil(SETTINGS.flat_by) <= 0 || (r && r.lockout);
+  box.style.display = over ? "" : "none";
+  if (over) box.innerHTML = daySummaryHTML();
+}
+async function loadTodaySignals() {
+  try { TODAY_SIGNALS = (await api("/api/hv-signals?days=1&source=live")).signals.filter(s => s.trade_date === istDate()); }
+  catch { TODAY_SIGNALS = null; }
+}
+
 /* ---------------- journal & dashboard ---------------- */
 async function loadJournal() {
   JOURNAL = await api("/api/hv-journal?days=" + JOURNAL_DAYS);
-  renderJournal();
+  renderJournal(); renderRiskBar();
 }
 function renderJournal() {
   if (!JOURNAL) return;
   const t = JOURNAL.totals;
+  $("todaySummary").innerHTML = daySummaryHTML();
   $("journalHeadline").innerHTML = `<div class="row" style="justify-content:space-between">
     <div><div class="score-item"><div class="k">Net profit (after charges)</div></div><div class="headline num ${sgn(t.net_pnl)}">${money(t.net_pnl, true)}</div></div>
     <div class="score-grid">
+      <div class="score-item"><div class="k">Total ${tip("r")}</div><div class="v num ${sgn(t.r)}">${rr(t.r)}</div></div>
       <div class="score-item"><div class="k">Trading days</div><div class="v num">${t.trading_days}</div></div>
       <div class="score-item"><div class="k">Green / red days</div><div class="v num"><span class="pos">${t.green_days}</span> / <span class="neg">${t.red_days}</span></div></div>
       <div class="score-item"><div class="k">Round trips</div><div class="v num">${t.round_trips}</div></div>
     </div></div>`;
   renderChart();
-  $("daysTable").innerHTML = `<thead><tr><th class="l">Date</th><th>Round trips</th><th class="l">Tickers</th><th>Net ₹</th><th>Cumulative ₹</th><th class="l"></th></tr></thead><tbody>` +
+  $("daysTable").innerHTML = `<thead><tr><th class="l">Date</th><th>Round trips</th><th>W / L</th><th class="l">Tickers</th><th>R</th><th>Net ₹</th><th>Cumulative ₹</th><th>Rule breaks</th><th class="l"></th></tr></thead><tbody>` +
     ([...JOURNAL.days].reverse().map(d => `<tr><td class="l num">${esc(d.date)}</td><td class="num">${d.round_trips}</td>
-      <td class="l">${esc(d.tickers.join(", "))}</td><td class="num ${sgn(d.net_pnl)}">${money(d.net_pnl, true)}</td>
-      <td class="num ${sgn(d.cumulative_net)}">${money(d.cumulative_net, true)}</td>
-      <td class="l dim">${d.loss_limit_hit ? "loss limit hit" : d.done_for_day ? "target reached" : ""}</td></tr>`).join("") || `<tr><td colspan="6" class="dim l">No trades logged in this range yet.</td></tr>`) + `</tbody>`;
+      <td class="num">${d.wins} / ${d.losses}</td><td class="l">${esc(d.tickers.join(", "))}</td>
+      <td class="num ${sgn(d.r)}">${rr(d.r)}</td><td class="num ${sgn(d.net_pnl)}">${money(d.net_pnl, true)}</td>
+      <td class="num ${sgn(d.cumulative_net)}">${money(d.cumulative_net, true)}</td><td class="num ${d.rule_breaks ? "neg" : ""}">${d.rule_breaks}</td>
+      <td class="l dim">${d.loss_limit_hit ? "loss limit hit" : d.done_for_day ? "target reached" : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="dim l">No trades logged in this range yet.</td></tr>`) + `</tbody>`;
   renderPositions();
 }
 function renderChart() {
@@ -826,39 +1090,46 @@ function renderChart() {
 let OPEN_DETAIL = null;
 function renderPositions() {
   const rows = JOURNAL.positions;
-  $("positionsTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Symbol</th><th class="l">Side</th><th>Qty</th><th>Avg entry</th><th>Avg exit</th><th>Charges</th><th>Net ₹</th><th>Net %</th><th class="l">Setup</th><th class="l">Status</th></tr></thead><tbody>` +
+  $("positionsTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Symbol</th><th class="l">Side</th><th>Qty</th><th>Avg entry</th><th>Stop</th><th>Avg exit</th><th>Charges</th><th>Net ₹</th><th>R</th><th class="l">Setup</th><th class="l">Status</th></tr></thead><tbody>` +
     (rows.map(p => {
       const s = p.summary, open = OPEN_DETAIL === p.id;
-      let html = `<tr class="clickable" data-pos="${p.id}"><td class="l num">${esc(p.trade_date)}</td><td class="sym">${esc(p.symbol)}</td><td class="l">${esc(p.side)}</td>
-        <td class="num">${s.entry_qty}</td><td class="num">${num2(s.avg_entry)}</td><td class="num">${s.avg_exit === null ? "–" : num2(s.avg_exit)}</td>
+      let html = `<tr class="clickable" data-pos="${p.id}"><td class="l num">${esc(p.trade_date)}</td><td class="sym">${esc(p.symbol)}${p.rule_broken ? ` <span class="chip warn" title="${esc(p.rule_note || "")}">rule broken</span>` : ""}</td><td class="l">${esc(p.side)}</td>
+        <td class="num">${s.entry_qty}</td><td class="num">${num2(s.avg_entry)}</td><td class="num">${p.planned_stop ? num2(p.planned_stop) : '<span class="neg">–</span>'}</td><td class="num">${s.avg_exit === null ? "–" : num2(s.avg_exit)}</td>
         <td class="num dim">${money(s.charges)}</td><td class="num ${sgn(s.net_pnl)}">${s.exit_qty ? money(s.net_pnl, true) : "–"}</td>
-        <td class="num ${sgn(s.net_pct)}">${s.net_pct === null ? "–" : pct(s.net_pct)}</td><td class="l dim">${esc(p.setup_tag || "")}</td>
+        <td class="num ${sgn(p.r)}">${p.r === null || p.r === undefined ? "–" : rr(p.r)}</td><td class="l dim">${esc(p.setup_tag || "")}</td>
         <td class="l">${s.status === "open" ? `<span class="chip on static">open ${s.open_qty}</span>` : "closed"}</td></tr>`;
-      if (open) html += `<tr><td colspan="11" style="padding:0"><div class="detail-wrap" data-detail="${p.id}">
+      if (open) html += `<tr><td colspan="12" style="padding:0"><div class="detail-wrap" data-detail="${p.id}">
         <div class="detail-grid">
           <label class="field">Setup<input data-d="tag" list="setupTags" value="${esc(p.setup_tag || "")}" style="width:160px"></label>
+          <label class="field">Planned stop<input data-d="stop" type="number" step="0.05" value="${p.planned_stop ?? ""}" style="width:100px"></label>
           <label class="field">Execution<select data-d="rating"><option value="">–</option>
             <option value="clean" ${p.execution_rating === "clean" ? "selected" : ""}>clean</option>
             <option value="rushed" ${p.execution_rating === "rushed" ? "selected" : ""}>rushed</option></select></label>
+          <label class="field" style="flex-direction:row;align-items:center;gap:6px;padding-bottom:8px"><input data-d="broken" type="checkbox" ${p.rule_broken ? "checked" : ""}> Rule broken</label>
+          <label class="field grow">Which rule<input data-d="rnote" value="${esc(p.rule_note || "")}" style="font-family:'Space Grotesk',sans-serif"></label>
           <label class="field grow">Note<input data-d="note" value="${esc(p.note || "")}" style="font-family:'Space Grotesk',sans-serif"></label>
           <button class="small" data-d="save">Save</button><button class="small sell" data-d="del">Delete trade</button>
         </div>
+        <div class="hint" style="margin-bottom:8px">1R for this trade: ${money(p.risk_amount)} (set when it was opened).</div>
         <table class="fills-table"><thead><tr><th class="l">Time (IST)</th><th class="l">Fill</th><th>Qty</th><th>Price</th><th></th></tr></thead><tbody>
           ${p.fills.map(f => `<tr><td class="l num">${new Date(f.filled_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })}</td>
             <td class="l">${f.kind === "entry" ? (p.side === "long" ? "buy" : "sell short") : (p.side === "long" ? "sell" : "buy to cover")}</td>
             <td class="num">${f.qty}</td><td class="num">${num2(f.price)}</td><td><button class="link" data-d="delfill" data-fill="${f.id}">remove</button></td></tr>`).join("")}
         </tbody></table></div></td></tr>`;
       return html;
-    }).join("") || `<tr><td colspan="11" class="dim l">No trades logged in this range yet.</td></tr>`) + `</tbody>`;
+    }).join("") || `<tr><td colspan="12" class="dim l">No trades logged in this range yet.</td></tr>`) + `</tbody>`;
 }
 $("positionsTable").addEventListener("click", async e => {
   const d = e.target.closest("[data-d]");
   if (d) {
+    if (["tag", "stop", "rating", "broken", "rnote", "note"].includes(d.dataset.d)) return;
     const wrap = d.closest("[data-detail]"), id = parseInt(wrap.dataset.detail, 10);
     try {
       if (d.dataset.d === "save") {
-        await post("/api/hv-position-update", { position_id: id, setup_tag: wrap.querySelector("[data-d=tag]").value,
-          note: wrap.querySelector("[data-d=note]").value, execution_rating: wrap.querySelector("[data-d=rating]").value });
+        const w = k => wrap.querySelector(`[data-d=${k}]`);
+        await post("/api/hv-position-update", { position_id: id, setup_tag: w("tag").value, note: w("note").value,
+          execution_rating: w("rating").value, rule_broken: w("broken").checked, rule_note: w("rnote").value,
+          planned_stop: w("stop").value === "" ? null : parseFloat(w("stop").value) });
       } else if (d.dataset.d === "del") {
         if (!confirm("Delete this trade and all its fills?")) return;
         await post("/api/hv-position-delete", { position_id: id }); OPEN_DETAIL = null;
@@ -866,7 +1137,7 @@ $("positionsTable").addEventListener("click", async e => {
         if (!confirm("Remove this fill?")) return;
         await post("/api/hv-fill-delete", { fill_id: parseInt(d.dataset.fill, 10) });
       }
-      await loadJournal(); renderScoreboard(); LIVE_SIG = ""; renderLive();
+      await loadJournal(); renderLive();
     } catch (err) { banner(err.message, "error"); }
     return;
   }
@@ -880,14 +1151,77 @@ $("rangeBtns").addEventListener("click", async e => {
   try { await loadJournal(); } catch (err) { banner(err.message, "error"); }
 });
 
+/* ---------------- signals tab ---------------- */
+const OUTCOME_PILL = { target: "target", stop: "stop", timeout: "stretched", not_filled: "closed", confirmed: "entry", no_confirm: "closed" };
+async function loadSignals() {
+  try {
+    const src = $("sigSource").value;
+    const data = await api(`/api/hv-signals?days=${SIG_DAYS}${src ? "&source=" + src : ""}`);
+    renderSignals(data);
+  } catch (e) { $("sigSummary").innerHTML = `<span class="neg">Could not load signals: ${esc(e.message)}</span>`; }
+}
+function groupTable(title, groups, labels) {
+  const keys = Object.keys(groups);
+  if (!keys.length) return "";
+  return `<h3 style="margin-top:14px">${esc(title)}</h3><div class="table-wrap"><table><thead><tr><th class="l"></th><th>Signals</th><th>Scored</th><th>Target</th><th>Stop</th><th>Time-out</th><th>Not filled</th><th>Hit rate</th><th>Avg R</th></tr></thead><tbody>` +
+    keys.map(k => { const g = groups[k]; return `<tr><td class="l">${esc((labels && labels[k]) || k)}</td><td class="num">${g.signals}</td><td class="num">${g.scored}</td><td class="num pos">${g.targets}</td><td class="num neg">${g.stops}</td><td class="num">${g.timeouts}</td><td class="num dim">${g.not_filled}</td><td class="num">${g.hit_rate === null ? "–" : g.hit_rate + "%"}</td><td class="num ${sgn(g.avg_r)}">${rr(g.avg_r)}</td></tr>`; }).join("") +
+    `</tbody></table></div>`;
+}
+function renderSignals(data) {
+  const s = data.summary;
+  $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
+    (groupTable("By what you did", s.by_action, { taken: "Taken", skipped: "Skipped", lapsed: "Lapsed", pending: "Not scored / undecided", replay: "Replay" }) || `<p class="dim">No entry signals in this range yet.</p>`) +
+    groupTable("By confirmation", s.by_confirmation) + groupTable("By day type", s.by_day_type);
+  $("sigTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Symbol</th><th class="l">Source</th><th class="l">Stage</th><th class="l">Day type</th><th class="l">Confirmation</th><th>Entry</th><th>Stop</th><th>Target</th><th class="l">Action</th><th class="l">Outcome</th><th>R</th><th>Best · worst</th></tr></thead><tbody>` +
+    (data.signals.map(x => `<tr><td class="l num">${esc(x.trade_date)}</td><td class="l num">${new Date(x.signal_at).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}</td>
+      <td class="sym">${esc(x.symbol)}</td><td class="l dim">${esc(x.source)}</td><td class="l">${x.stage === "entry" ? "Entry zone" : "Setup armed"}</td>
+      <td class="l">${esc(x.day_type || "")}</td><td class="l">${esc((x.metrics || {}).confirmation || "")}</td>
+      <td class="num">${num2(x.entry)}</td><td class="num">${num2(x.stop)}</td><td class="num">${num2(x.target)}</td>
+      <td class="l">${esc(x.action || "")}${x.skip_reason ? ` <span class="dim">(${esc(x.skip_reason)})</span>` : ""}</td>
+      <td class="l">${x.outcome ? `<span class="pill pill--${OUTCOME_PILL[x.outcome] || "closed"}">${esc(x.outcome.replace("_", " "))}</span>` : '<span class="dim">–</span>'}</td>
+      <td class="num ${sgn(x.outcome_r)}">${rr(x.outcome_r)}</td><td class="num dim">${x.mfe_r === null ? "–" : rr(x.mfe_r) + " · " + rr(x.mae_r)}</td></tr>`).join("") ||
+      `<tr><td colspan="14" class="dim l">No signals in this range yet.</td></tr>`) + `</tbody>`;
+}
+$("sigRangeBtns").addEventListener("click", e => {
+  const b = e.target.closest("button[data-days]"); if (!b) return;
+  SIG_DAYS = parseInt(b.dataset.days, 10);
+  document.querySelectorAll("#sigRangeBtns button").forEach(x => x.classList.toggle("active", x === b));
+  loadSignals();
+});
+$("sigSource").addEventListener("change", loadSignals);
+$("scoreBtn").addEventListener("click", async () => {
+  $("scoreBtn").disabled = true;
+  try { const r = await post("/api/hv-signals", { date: istDate() }); $("replayInfo").textContent = `Scored ${r.scored} signal(s).`; await loadSignals(); await loadTodaySignals(); }
+  catch (e) { banner("Scoring failed: " + e.message, "error"); }
+  finally { $("scoreBtn").disabled = false; }
+});
+$("replayBtn").addEventListener("click", async () => {
+  const syms = $("replaySyms").value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (!syms.length) { $("replayInfo").textContent = "Enter at least one NSE symbol."; return; }
+  $("replayBtn").disabled = true;
+  const lines = [];
+  for (const sym of syms) {
+    $("replayInfo").textContent = lines.concat(`${sym}: replaying…`).join(" · ");
+    try {
+      const r = await post("/api/hv-replay", { symbol: sym });
+      lines.push(`${sym}: ${r.days} days (${r.from || "–"} to ${r.to || "–"}), ${r.signals} signals, ${r.targets} targets, ${r.stops} stops, avg ${rr(r.avg_r)}`);
+    } catch (e) { lines.push(`${sym}: ${e.message}`); }
+  }
+  $("replayInfo").textContent = lines.join(" · ");
+  $("replayBtn").disabled = false;
+  loadSignals();
+});
+
 /* ---------------- tabs, chrome ---------------- */
 document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab.dataset.tab));
   try { localStorage.setItem("hv_tab", tab.dataset.tab); } catch {}
-  if (tab.dataset.tab === "live") { renderLive(); updateAllCards(); }
+  if (tab.dataset.tab === "live") renderLive();
+  if (tab.dataset.tab === "signals") loadSignals();
+  if (tab.dataset.tab === "journal") loadTodaySignals().then(renderJournal);
 }));
-$("settingsBtn").addEventListener("click", () => { const p = $("settingsPanel"); p.style.display = p.style.display === "none" ? "" : "none"; });
+$("settingsBtn").addEventListener("click", () => { const p = $("settingsPanel"); p.style.display = p.style.display === "none" ? "" : "none"; if (SETTINGS) renderSettings(); });
 $("saveSettingsBtn").addEventListener("click", saveSettings);
 $("loginBtn").addEventListener("click", () => { window.location.href = "/api/login"; });
 setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" }); }, 1000);
@@ -902,22 +1236,22 @@ document.body.appendChild(datalist);
   await checkStatus();
   try {
     await loadSettings();
-    await Promise.all([loadDay(), loadJournal()]);
+    await Promise.all([loadDay(), loadJournal(), loadTodaySignals()]);
   } catch (e) {
-    banner("Could not load saved data (have you run scripts/012_create_high_volatility_tables.sql in Neon?): " + e.message, "error");
+    banner("Could not load saved data (have you run scripts/012 and scripts/013 in Neon?): " + e.message, "error");
     if (!SETTINGS) return;
   }
-  renderScoreboard(); renderLive();
+  renderRiskBar(); renderLive(); renderJournal();
   let tab = "pre"; try { tab = localStorage.getItem("hv_tab") || "pre"; } catch {}
   const tabBtn = document.querySelector(`.tab[data-tab="${tab}"]`);
   if (tabBtn) tabBtn.click();
+  if (LOGGED_IN) await buildWatchlist(false);
   startPolling();
-  if (LOGGED_IN) buildWatchlist(false);
 })();
 </script>
 
 <footer style="padding-bottom:32px">
-  Net figures include Zerodha intraday charges (brokerage, STT, exchange fees, SEBI, stamp duty, GST) -- the rates live in <span class="num">hv_config.py</span>; check them against Zerodha's calculator.
+  Net figures include Zerodha intraday charges (brokerage, STT, exchange fees, SEBI, stamp duty, GST) -- the rates live in <span class="num">hv_config.py</span>; check them against Zerodha's calculator. R, sizing and net R:R use a flat round-trip cost assumption (Settings → Costs + slippage).
 </footer>
 
 </div>

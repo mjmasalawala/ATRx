@@ -171,25 +171,33 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
     for r in rows:
         stats, q = r.get("stats"), r.get("quote") or {}
         reason = None
+        # Tickers typed in by hand skip the volatility filter (the user only
+        # adds one when they expect it to move today) but not the safety
+        # checks: a failing turnover or price band is kept as a warning
+        # badge instead of dropping the row.
+        r["safety_warnings"] = []
         if stats is None:
             reason = r.get("missing_reason") or "not enough 5-minute history"
         else:
             atr = r.get("atr_pct") if r.get("atr_pct") is not None else stats.get("atr_pct_5m")
             r["atr_pct"] = atr
-            # Tickers typed in by hand are never filtered: the user only adds
-            # one when they expect it to be volatile today.
+            thin = stats["avg_turnover_cr"] < cfg.min_avg_turnover_cr
             if r.get("manual"):
-                pass
+                if thin:
+                    r["safety_warnings"].append(f"turnover {stats['avg_turnover_cr']} cr < {cfg.min_avg_turnover_cr:g}")
             elif atr is not None and atr < cfg.min_atr_pct:
                 reason = f"ATR% {atr:.2f} below {cfg.min_atr_pct}"
-            elif stats["avg_turnover_cr"] < cfg.min_avg_turnover_cr:
+            elif thin:
                 reason = f"avg turnover {stats['avg_turnover_cr']} cr below {cfg.min_avg_turnover_cr}"
         prev_close, upper = q.get("prev_close"), q.get("upper_circuit")
         if reason is None and prev_close and upper:
             band = (upper - prev_close) / prev_close * 100
             r["circuit_band_pct"] = round(band, 1)
-            if band < cfg.min_circuit_band_pct - 0.01 and not r.get("manual"):
-                reason = f"price band only {band:.0f}%"
+            if band < cfg.min_circuit_band_pct - 0.01:
+                if r.get("manual"):
+                    r["safety_warnings"].append(f"price band only {band:.0f}%")
+                else:
+                    reason = f"price band only {band:.0f}%"
         if reason:
             excluded.append({"symbol": r["symbol"], "reason": reason})
         else:
@@ -222,7 +230,7 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
     for i, r in enumerate(eligible):
         s = r["stats"]
         score = sum(weights[k] * comps[k][i] for k in weights) / total_w * 100
-        why = (["added by you (filters skipped)"] if r.get("manual") else []) + [
+        why = (["added by you (volatility filter skipped)"] if r.get("manual") else []) + [
             f"1st-hour range avg {s['avg_fh_range_pct']}%",
             f"2+ up-swings ≥{cfg.swing_pct}% on {s['two_up_days_pct']:.0f}% of days, "
             f"2+ down-swings on {s['two_down_days_pct']:.0f}%",
@@ -237,6 +245,7 @@ def rank_candidates(rows: list[dict], cfg: HVConfig) -> tuple[list[dict], list[d
             "last_price": (r.get("quote") or {}).get("last_price") or s["last_close"],
             "prev_close": (r.get("quote") or {}).get("prev_close"),
             "circuit_band_pct": r.get("circuit_band_pct"),
+            "safety_warnings": r.get("safety_warnings") or [],
             "stats": s, "score": round(score, 1), "why": why,
         })
     ranked.sort(key=lambda x: -x["score"])

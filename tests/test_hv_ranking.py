@@ -134,10 +134,14 @@ def test_missing_history_is_excluded_not_crashing():
     assert ranked == [] and excluded[0]["symbol"] == "NEW"
 
 
-def test_manual_tickers_skip_the_filters():
+def test_manual_tickers_skip_the_volatility_filter_but_keep_safety_warnings():
     rows = [_row("LOWATR", 0.04, atr_pct=1.0), _row("THIN", 0.04, volume=10),
             _row("BAND5", 0.04, upper_band=5.0)]
     for r in rows:
         r["manual"] = True
     ranked, excluded = rank_candidates(rows, HVConfig())
     assert {r["symbol"] for r in ranked} == {"LOWATR", "THIN", "BAND5"} and not excluded
+    warn = {r["symbol"]: r["safety_warnings"] for r in ranked}
+    assert warn["LOWATR"] == []
+    assert any("turnover" in w for w in warn["THIN"])
+    assert any("price band" in w for w in warn["BAND5"])

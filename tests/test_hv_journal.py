@@ -101,7 +101,7 @@ def _pos(date, symbol, side, entry, exit_, qty=100):
 
 
 def test_day_summary_counts_round_trips_and_flags_loss_limit():
-    cfg = HVConfig(daily_loss_limit=500, target_round_trips=4, max_tickers=3)
+    cfg = HVConfig(capital=25000, daily_loss_pct=2.0, target_round_trips=4, max_tickers=3)  # limit Rs 500
     journal = build_journal([_pos("2026-10-22", "ETERNAL", "long", 306, 313),
                              _pos("2026-10-22", "ETERNAL", "long", 310, 315),
                              _pos("2026-10-22", "ABB", "long", 100, 95)], cfg)

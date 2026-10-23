@@ -84,7 +84,10 @@ def fetch_gift_nifty() -> dict:
 
 def normalise_quote(raw: dict) -> dict:
     ohlc = raw.get("ohlc") or {}
+    depth = raw.get("depth") or {}
     return {
+        # best bid / ask only -- enough for the spread check
+        "depth": {"buy": (depth.get("buy") or [])[:1], "sell": (depth.get("sell") or [])[:1]},
         "last_price": raw.get("last_price") or None,
         "open": ohlc.get("open") or None,
         "high": ohlc.get("high") or None,
