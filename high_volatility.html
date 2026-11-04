@@ -280,7 +280,7 @@
   <div class="section"><div id="liveGrid" class="live-grid"></div></div>
   <div id="stripBox" class="section card card--compact" style="display:none"></div>
   <div id="liveSummary" class="section card" style="display:none"></div>
-  <footer>Every order is yours to place in Kite: a limit buy at the card's price and size, then the stop-loss order the moment it fills. Logging here only records it. Cards refresh every <span id="pollSecs">30</span> s while this tab stays open; alerts only fire while it's open.</footer>
+  <footer>Every order is yours to place in Kite: a limit buy at the card's price and size, then the stop-loss order the moment it fills. Logging here only records it. Cards refresh every <span id="pollSecs">10</span> s while this tab stays open; alerts only fire while it's open.</footer>
 </div>
 
 <!-- =============== JOURNAL =============== -->
@@ -997,7 +997,7 @@ async function pollNow() {
 }
 function startPolling() {
   clearInterval(pollTimer);
-  pollTimer = setInterval(pollNow, Math.max(15, SETTINGS.poll_seconds) * 1000);
+  pollTimer = setInterval(pollNow, Math.max(10, SETTINGS.poll_seconds) * 1000);
   pollNow();
 }
 $("refreshBtn").addEventListener("click", pollNow);

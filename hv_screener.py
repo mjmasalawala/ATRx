@@ -19,7 +19,7 @@ import requests
 from kiteconnect import KiteConnect
 
 import db_store
-from hv_config import HVConfig
+from hv_config import HV_UNIVERSE_TIERS, HVConfig
 from hv_ranking import intraday_stats, rank_candidates
 from screener import resolve_tokens
 
@@ -135,7 +135,8 @@ def build_candidates(kite: KiteConnect, cfg: HVConfig, extras: list[str], force:
     snapshot = db_store.load_atr_snapshot()
     by_symbol = {r["symbol"]: r for r in snapshot}
 
-    shortlist = [r for r in snapshot if r["atr_pct"] >= cfg.min_atr_pct][: cfg.shortlist_size]
+    shortlist = [r for r in snapshot
+                 if r["tier"] in HV_UNIVERSE_TIERS and r["atr_pct"] >= cfg.min_atr_pct][: cfg.shortlist_size]
     work = [{"symbol": r["symbol"], "tier": r["tier"], "atr_pct": r["atr_pct"], "manual": False,
              "row": r} for r in shortlist]
     shortlisted = {w["symbol"] for w in work}

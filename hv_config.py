@@ -81,7 +81,7 @@ class HVConfig:
     tag_bonus: float = 0.05             # added to the score per pre-open clue ticked (results/news/broker call)
 
     # --- Live page ---
-    poll_seconds: int = 30
+    poll_seconds: int = 10
     target_pcts: tuple = (1.0, 2.0, 3.0)   # net-of-charges profit targets shown on each live card
     dip_alert_pct: float = 1.0             # browser alert when price is this far below the open
     bounce_alert_pct: float = 1.0          # ...or this far above the day's low
@@ -99,6 +99,11 @@ class HVConfig:
     def daily_loss_limit(self) -> float:
         return self.capital * self.daily_loss_pct / 100
 
+
+# Universe tiers (screener_universes) whose ATR snapshot rows the pre-open
+# shortlist may draw from: Nifty 100 and Nifty Midcap 150. Hand-typed extra
+# tickers are exempt. A code constant, not a tunable -- change it here.
+HV_UNIVERSE_TIERS = ("NIFTY1001", "NIFTY1002", "NIFTYMIDCAP1501", "NIFTYMIDCAP1502")
 
 TUNABLE_FIELDS = tuple(f.name for f in fields(HVConfig))
 
