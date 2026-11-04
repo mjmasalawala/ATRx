@@ -301,17 +301,30 @@ def _persist_config_used() -> None:
         logger.warning("Could not persist config to DB: %s", e)
 
 
-def _persist_atr_snapshot(universe_tier: str, atr_pcts: dict, prices: dict, rank_of) -> None:
-    """Saves the latest ATR% per symbol for the High Volatility page. Skipped
-    during NSE market hours: Kite's daily history then includes today's
-    partial candle, which would skew ATR% away from the clean pre-open
-    figure. Non-fatal, like _persist_config_used."""
+def _persist_atr_snapshot(universe_tier: str, atr_pcts: dict, prices: dict, rank_of,
+                          history: dict | None = None) -> None:
+    """Saves the latest ATR% per symbol for the High Volatility page.
+    During NSE market hours Kite's daily history includes today's partial
+    candle, which would skew ATR%; so then the figures are recomputed from
+    history with today's candle dropped (the clean pre-open value) instead of
+    skipping the save. Non-fatal, like _persist_config_used."""
     now = datetime.now(IST)
-    if now.weekday() < 5 and dt_time(9, 15) <= now.time() <= dt_time(15, 30):
-        logger.info("Skipping ATR snapshot save: market is open, today's candle is partial.")
-        return
     try:
         import db_store
+        if now.weekday() < 5 and dt_time(9, 15) <= now.time() <= dt_time(15, 30):
+            if not history:
+                logger.info("Skipping ATR snapshot save: market is open and no history to trim.")
+                return
+            atr_pcts, prices = {}, {}
+            for sym, candles in history.items():
+                days = pd.to_datetime(candles["timestamp"]).dt.date
+                result = current_atr_and_price(candles[days < now.date()])
+                if result is not None:
+                    atr_pcts[sym] = result[0] / result[1]
+                    prices[sym] = result[1]
+            if not atr_pcts:
+                return
+            rank_of = lambda sym: round(sum(1 for o in atr_pcts.values() if o <= atr_pcts[sym]) / len(atr_pcts) * 100, 1)
         rows = [{"symbol": sym, "atr_pct": round(v * 100, 2), "atr_percentile_rank": rank_of(sym),
                  "price": round(prices[sym], 2), "atr_period": CONFIG.atr_period}
                 for sym, v in atr_pcts.items()]
@@ -384,7 +397,7 @@ def _run_screener(kite: KiteConnect, universe_tier: str = "large_cap",
         return round(sum(1 for other in atr_pcts.values() if other <= v) / len(atr_pcts) * 100, 1)
 
     if save_atr_snapshot:
-        _persist_atr_snapshot(universe_tier, atr_pcts, prices, percentile_rank)
+        _persist_atr_snapshot(universe_tier, atr_pcts, prices, percentile_rank, history)
 
     # Every symbol in the universe gets a row in the breakdown, regardless
     # of how far it got -- this is what makes "no candidates" explainable
