@@ -405,9 +405,12 @@ function banner(msg, kind) {
 
 /* ---------------- tooltips ---------------- */
 function showTip(el) {
-  const t = TIPS[el.dataset.tip]; if (!t) return;
+  const t = TIPS[el.dataset.tip], st = SETTING_TIPS[el.dataset.stip];
+  if (!t && !st) return;
   const box = $("tipBox");
-  box.innerHTML = `<b>${esc(t[0])}</b>${esc(t[1])}<div class="t-row"><span class="t-k">How to read it:</span> ${esc(t[2])}</div><div class="t-row"><span class="t-k">How to use it:</span> ${esc(t[3])}</div>`;
+  box.innerHTML = st
+    ? `<b>${esc(el.dataset.label)}</b>${esc(st[0])}<div class="t-row"><span class="t-k">Raising / lowering it:</span> ${esc(st[1])}</div>`
+    : `<b>${esc(t[0])}</b>${esc(t[1])}<div class="t-row"><span class="t-k">How to read it:</span> ${esc(t[2])}</div><div class="t-row"><span class="t-k">How to use it:</span> ${esc(t[3])}</div>`;
   box.style.display = "block";
   const r = el.getBoundingClientRect(), w = box.offsetWidth;
   box.style.left = Math.max(8, Math.min(window.scrollX + r.left - 12, window.scrollX + document.documentElement.clientWidth - w - 8)) + "px";
@@ -458,6 +461,65 @@ async function checkStatus() {
   } catch { $("loginStatus").textContent = "status unavailable"; }
 }
 
+/* Settings tooltips: key -> [what it does, effect of raising / lowering it]. */
+const SETTING_TIPS = {
+  capital: ["Money this strategy may risk. Every R and loss limit is a % of it.", "Higher: larger 1R and position sizes. Lower: smaller everything. Keep it separate from long-term money."],
+  risk_pct: ["1R, the planned loss per trade, as % of capital.", "Higher: bigger positions and bigger swings in R. Lower: smaller trades. 0.25 for the first 20 trades, then 0.5."],
+  daily_loss_pct: ["Loss that flattens everything and ends the day.", "Higher: more room to recover but deeper bad days. Lower: stops earlier. 2% = 4R at 0.5% risk, 8R at 0.25%."],
+  weekly_loss_pct: ["A week losing this much halves next week's size.", "Lower: de-risks sooner. Higher: tolerates longer losing runs."],
+  monthly_dd_pct: ["Drawdown from the month's peak that stops live trading for review.", "Lower: stricter circuit breaker. Higher: more tolerance."],
+  giveback_trigger_r: ["Once the day reaches this many R, the give-back rule starts watching.", "Lower: protects small winning days. Higher: lets runs develop before the rule applies."],
+  giveback_frac: ["Share of the day's peak profit you may give back before the day ends.", "Lower: locks in gains quickly but cuts good days short. Higher: more room."],
+  max_open_positions: ["Positions allowed open at once.", "Higher: more simultaneous risk. Lower: more focus. Use 1 while Nifty trends down."],
+  max_correlated_r: ["Cap on combined open risk (R) of same-direction positions.", "Lower: safer on market-wide moves. Higher: stocks move together, so a loss can be several R."],
+  gross_exposure_x: ["Total open position value as a multiple of capital.", "Higher: larger positions when sizing hits this cap. Lower: smaller. MIS allows far more than 2x."],
+  liquidity_pct: ["A position may be at most this % of the stock's usual 5-minute traded value.", "Higher: bigger positions in thin stocks, more slippage. Lower: smaller and safer fills."],
+  cost_pct: ["Round-trip charges plus slippage assumed in sizing and R:R.", "Higher: smaller sizes and lower R:R, so fewer trades pass. Lower: more optimistic. Match it to your real costs."],
+  min_net_rr: ["Smallest reward-to-risk (after costs) a suggestion may have.", "Higher: fewer, better trades. Lower: more trades that barely pay for the losers."],
+  max_trips_per_stock: ["Round trips allowed per stock per day.", "Higher: more repeats on one name. Lower: avoids overtrading a stock that is not cooperating."],
+  max_trips_per_day: ["Round trips allowed per day, across stocks.", "Higher: more costs and more chances to break rules. Lower: stops overtrading."],
+  cooloff_after_losses: ["Losses in a row that trigger a break.", "Lower: pauses sooner. Higher: keeps trading through a losing run."],
+  cooloff_minutes: ["Length of the break after those losses.", "Longer: more time to reset. Shorter: back to trading sooner."],
+  stop_after_losses: ["Losses in a row that end the day.", "Lower: stops earlier on bad days. Higher: more attempts to recover."],
+  event_size_mult: ["Size multiplier on a Results / News day.", "Below 1: smaller on gap-prone days. 1 means no reduction."],
+  longs_only: ["true: only dip-buys are suggested. false: shorts allowed.", "Keep true until the long side is proven."],
+  entry_start: ["Earliest time new entries are allowed (HH:MM).", "Later: skips the noisy open. Earlier: catches the first flush."],
+  entry_end: ["Last time a new entry is allowed (HH:MM).", "Later: more setups but less time to exit. Keep it at least time-stop minutes before Flat by."],
+  flat_by: ["Time everything must be closed (HH:MM).", "Earlier: avoids the closing session and MIS square-off. Later: more room for trades."],
+  time_stop_minutes: ["Exit if the trade has not reached +0.5R within this many minutes.", "Shorter: cuts stalled trades fast. Longer: gives bounces more time."],
+  band_no_entry_pct: ["No new entries this close to a circuit limit.", "Higher: keeps farther from lock risk. Lower: allows riskier entries."],
+  band_exit_pct: ["Exit at once this close to a circuit limit.", "Higher: leaves earlier. Lower: risks a lock that cannot be sold."],
+  min_band_pct: ["Stocks whose price band is this narrow or narrower are never traded.", "Higher: excludes more stocks. Lower: admits stocks that cannot move far."],
+  max_spread_pct: ["Widest bid-ask spread (% of price) a suggestion may have.", "Lower: cleaner fills, fewer setups. Higher: more setups, more slippage."],
+  stretch_sigma: ["How many VWAP bands below VWAP price must be to count as stretched.", "Higher: fewer, deeper dips. Lower: more setups, shallower dips."],
+  stretch_atr: ["Alternative stretch: daily ATRs below the session high.", "Higher: needs a bigger drop from the high. Lower: more setups."],
+  rsi_period: ["RSI lookback in 5-minute bars.", "Shorter: more sensitive and noisier. Longer: smoother and slower."],
+  rsi_max: ["RSI below this counts as an exhaustion sign.", "Higher: more setups, weaker exhaustion. Lower: stricter."],
+  rsi_exit: ["RSI above this on the bounce triggers an exit warning.", "Lower: exits earlier. Higher: lets the bounce run."],
+  volume_spike_x: ["Down-bar volume vs normal volume for that time of day, to count as capitulation.", "Higher: only heavy selling counts. Lower: more setups."],
+  wick_frac: ["Share of the bar that must be lower wick to count as rejection.", "Higher: only long wicks count. Lower: more setups."],
+  level_atr: ["How close (in ATRs) a flush low must be to a marked level.", "Higher: more lows count as at a level. Lower: stricter."],
+  gap_atr: ["A gap down bigger than this many ATRs waits for a VWAP reclaim.", "Lower: waits on more gaps. Higher: buys through larger gaps."],
+  entry_valid_bars: ["1-minute bars an entry suggestion stays valid.", "Higher: more time to place the order but staler prices. Lower: forces quick action."],
+  strip_size: ["Extra shortlist stocks scanned besides your picks.", "Higher: more opportunities, more Kite calls per refresh. Lower: lighter and faster."],
+  poll_seconds: ["How often the live tab refreshes (minimum 10).", "Lower: fresher signals but more Kite calls. Higher: lighter load, laggier signals."],
+  target_round_trips: ["Winning round trips that count as done for the day.", "Higher: a bigger daily goal. Lower: stop sooner."],
+  max_tickers: ["Focus tickers you plan to trade per day.", "Higher: more spread. Lower: more focus."],
+  shortlist_size: ["Top symbols by ATR% that get the slower 5-minute analysis.", "Higher: wider net but a slower build. Lower: faster, fewer candidates."],
+  min_atr_pct: ["ATR% floor for the shortlist, from the latest Find ATRx Opps run.", "Higher: only the most volatile. Lower: more, calmer names."],
+  min_avg_turnover_cr: ["Minimum average daily turnover in crores.", "Higher: only liquid names. Lower: admits thinner stocks."],
+  min_circuit_band_pct: ["Drops stocks with a price band narrower than this.", "Higher: removes more. Lower: allows tightly banded stocks."],
+  swing_pct: ["Size of a tradable swing for the 2+ swings statistic.", "Higher: counts only bigger moves, fewer days qualify. Lower: more."],
+  first_hour_minutes: ["Length of the opening window used for first-hour stats.", "Longer: smooths the stat but dilutes the opening move."],
+  history_calendar_days: ["How far back the 5-minute history goes.", "Longer: steadier stats but slower and older data. Shorter: faster and more recent."],
+  w_first_hour_range: ["Ranking weight: average first-hour range.", "Higher: favours stocks that move a lot early. Weights only matter relative to each other."],
+  w_two_swing_days: ["Ranking weight: share of days with 2+ tradable swings.", "Higher: favours stocks that have repeated your routine."],
+  w_atr: ["Ranking weight: ATR%.", "Higher: favours generally volatile stocks."],
+  w_whipsaw: ["Ranking weight: whipsaw (back-and-forth vs one-way).", "Higher: favours choppy stocks over one-directional ones."],
+  w_gap: ["Ranking weight: pre-open gap size.", "Higher: favours stocks gapping today."],
+  w_volume_surge: ["Ranking weight: yesterday's volume vs average.", "Higher: favours stocks in play."],
+  tag_bonus: ["Score fraction added per ticked clue (results, news, broker call).", "Higher: your clues outweigh the statistics. 0.05 = 5 points."],
+};
 const SETTING_DEFS = [
   ["Risk limits", [
     ["capital", "Trading capital (₹)", "The amount this strategy may lose, kept apart from long-term money."],
@@ -526,7 +588,7 @@ function renderSettings() {
     fields.map(([key, label, tipText]) => {
       const v = Array.isArray(SETTINGS[key]) ? SETTINGS[key].join(", ") : SETTINGS[key];
       const dis = locked && RISK_FIELDS.includes(key) ? "disabled" : "";
-      return `<label class="field" title="${esc(tipText)}">${esc(label)}<input data-setting="${key}" value="${esc(v)}" ${dis}></label>`;
+      return `<label class="field">${esc(label)}${SETTING_TIPS[key] ? `<span class="tip" tabindex="0" data-stip="${key}" data-label="${esc(label)}" aria-label="About ${esc(label)}">i</span>` : ""}<input data-setting="${key}" value="${esc(v)}" ${dis}></label>`;
     }).join("") + `</div>`).join("") +
     `<p class="hint" style="margin-top:12px">Now: 1R = <b class="num">${money(SETTINGS.capital * SETTINGS.risk_pct / 100)}</b>, daily stop <b class="num">${money(-SETTINGS.capital * SETTINGS.daily_loss_pct / 100)}</b> (${(SETTINGS.daily_loss_pct / SETTINGS.risk_pct).toFixed(0)}R), exposure cap <b class="num">${money(SETTINGS.capital * SETTINGS.gross_exposure_x)}</b>.</p>`;
 }
