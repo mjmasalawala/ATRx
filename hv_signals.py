@@ -573,6 +573,27 @@ def score_signal(sig: dict, bars_1m: list[dict], cfg: HVConfig) -> dict:
             "mfe_r": round(mfe, 2), "mae_r": round(mae, 2)}
 
 
+def target_status(sig: dict, bars_1m: list[dict], last_price: float | None, now: datetime,
+                  session_end: datetime) -> dict | None:
+    """Did price reach the signal's suggested target the same trading day?
+    sig: {signal_at (naive IST), target}. Returns {"status": "hit", "at": ts}
+    as soon as a 1-minute bar at/after the signal (or the live price) is at
+    or above the target; {"status": "failed"} once the session has ended
+    without it; None while the day is still open. Fill and stop are ignored:
+    this only asks whether the target price was reached."""
+    target = sig.get("target")
+    if not target:
+        return None
+    for b in sorted(bars_1m, key=lambda x: x["ts"]):
+        if b["ts"] >= sig["signal_at"] and b["high"] >= target:
+            return {"status": "hit", "at": b["ts"]}
+    if last_price is not None and now >= sig["signal_at"] and last_price >= target:
+        return {"status": "hit", "at": now}
+    if now >= session_end:
+        return {"status": "failed"}
+    return None
+
+
 # ---------------------------------------------------------------- replay
 
 def replay_day(bars_1m: list[dict], ctx: dict, nifty_1m: list[dict], cfg: HVConfig) -> list[dict]:

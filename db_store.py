@@ -911,6 +911,24 @@ def save_hv_signal_scores(scores: list[dict]) -> None:
         conn.commit()
 
 
+def save_hv_signal_target_status(updates: list[dict]) -> None:
+    """updates: [{id, status: 'hit'|'failed', at: iso str | None}]. Stored in
+    the signal's `metrics` JSON (target_status / target_hit_at), so no schema
+    change is needed. One round trip."""
+    if not updates:
+        return
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.executemany(
+            f"""
+            UPDATE {HV_SIGNALS_TABLE}
+            SET metrics = COALESCE(metrics, '{{}}'::jsonb) || %s::jsonb
+            WHERE id = %s
+            """,
+            [[Json({"target_status": u["status"], "target_hit_at": u.get("at")}), u["id"]] for u in updates],
+        )
+        conn.commit()
+
+
 def replace_hv_replay_signals(symbol: str, from_date, to_date, rows: list[dict]) -> None:
     """Replaces a symbol's replay signals over a date range (re-running a
     replay never duplicates rows)."""

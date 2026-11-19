@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import time as time_module
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dt_time, timedelta
 
 from kiteconnect import KiteConnect
 
@@ -20,7 +20,7 @@ from hv_journal import build_journal
 from hv_risk import day_state, entry_blockers, period_state, to_ist_naive
 from hv_screener import EXCHANGE, IST, get_quotes, today_ist
 from hv_signals import (build_context, evaluate, manage_position, nifty_state, replay_day, resample,
-                        score_signal)
+                        score_signal, target_status)
 from screener import resolve_tokens
 
 logger = logging.getLogger("atrx.hv")
@@ -127,6 +127,25 @@ def risk_snapshot(cfg: HVConfig, now: datetime) -> tuple[dict, dict, list[dict]]
     return day, period, todays
 
 
+def _resolve_targets(trade_date: date, now: datetime, bars: dict, last_prices: dict) -> int:
+    """Marks the day's live signals whose suggested target price was reached
+    ('hit') or never reached by the close ('failed'), from the candles the
+    caller already has. A symbol without candles is left alone, so a missing
+    fetch is never turned into a failure. Returns how many were updated."""
+    session_end = datetime.combine(trade_date, dt_time(15, 30))
+    updates = []
+    for s in db_store.list_hv_signals(trade_date, trade_date, source="live"):
+        if not s["target"] or (s["metrics"] or {}).get("target_status") or s["symbol"] not in bars:
+            continue
+        r = target_status({"signal_at": to_ist_naive(s["signal_at"]), "target": s["target"]}, bars[s["symbol"]],
+                          last_prices.get(s["symbol"]), now, session_end)
+        if r:
+            updates.append({"id": s["id"], "status": r["status"],
+                            "at": r["at"].isoformat(timespec="seconds") if r.get("at") else None})
+    db_store.save_hv_signal_target_status(updates)
+    return len(updates)
+
+
 def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: list[str]) -> dict:
     now = now_ist()
     today = now.date()
@@ -198,6 +217,11 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
                 logger.warning("Could not record signal for %s: %s", sym, e)
         cards[sym] = ev
 
+    try:  # signal targets reached / missed -- a record, never a reason to fail the refresh
+        _resolve_targets(today, now, bars, {sym: (quotes.get(sym) or {}).get("last_price") for sym in symbols})
+    except Exception as e:
+        logger.warning("Could not update signal target status: %s", e)
+
     return {
         "now": now.isoformat(timespec="seconds"),
         "quotes": quotes,
@@ -212,15 +236,39 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
 
 # --------------------------------------------------------------- scoring
 
+def _resolve_day_targets(kite: KiteConnect, trade_date: date, now: datetime) -> int:
+    """Target status for a day's signals still unresolved (e.g. the tab was
+    closed before the close), from that day's full 1-minute candles."""
+    pending = [s for s in db_store.list_hv_signals(trade_date, trade_date, source="live")
+               if s["target"] and not (s["metrics"] or {}).get("target_status")]
+    if not pending:
+        return 0
+    contexts = db_store.load_watch_context(trade_date)
+    start = datetime.combine(trade_date, dt_time(9, 15))
+    end = min(now, datetime.combine(trade_date, dt_time(15, 30)))
+    pacer, bars = _Pacer(), {}
+    for sym in {s["symbol"] for s in pending}:
+        c = contexts.get(sym)
+        if not c:
+            continue
+        pacer.wait()
+        try:
+            bars[sym] = fetch_candles(kite, c["instrument_token"], start, end, "minute")
+        except Exception as e:
+            logger.warning("Target-status candles failed for %s: %s", sym, e)
+    return _resolve_targets(trade_date, now, bars, {})
+
+
 def score_day(kite: KiteConnect, cfg: HVConfig, trade_date: date) -> dict:
     """Scores the day's unscored live signals. An entry signal is scored
     once its 30-minute window has passed; an armed one is 'confirmed' if an
     entry with the same episode followed, else 'no_confirm' after the
     entry window closes."""
     now = now_ist()
+    targets = _resolve_day_targets(kite, trade_date, now)
     signals = [s for s in db_store.list_hv_signals(trade_date, trade_date, source="live") if not s["outcome"]]
     if not signals:
-        return {"scored": 0}
+        return {"scored": 0, "targets": targets}
     entries = {(s["symbol"], s["episode"]) for s in signals if s["stage"] == "entry"}
     entries |= {(s["symbol"], s["episode"]) for s in db_store.list_hv_signals(trade_date, trade_date, "live")
                 if s["stage"] == "entry"}
@@ -251,7 +299,7 @@ def score_day(kite: KiteConnect, cfg: HVConfig, trade_date: date) -> dict:
         if result.get("outcome"):
             scores.append({"id": s["id"], **result, "action": None if s["action"] else "lapsed"})
     db_store.save_hv_signal_scores(scores)
-    return {"scored": len(scores)}
+    return {"scored": len(scores), "targets": targets}
 
 
 # ---------------------------------------------------------------- replay

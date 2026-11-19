@@ -1052,6 +1052,7 @@ async function pollNow() {
     $("liveStatus").textContent = "updated " + new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" }) + " IST";
     const missing = (LIVE.missing_context || []).filter(s => !WATCH_REQUESTED.has(s));
     renderLive(); renderStrip(); renderNifty(); renderRiskBar(); checkAlerts(); renderLiveSummary();
+    if (document.querySelector('.tab[data-tab="signals"]').classList.contains("active")) loadSignals();  // target hit / failed updates
     if (missing.length) { await startWatch(missing, true); polling = false; return pollNow(); }
   } catch (e) {
     $("liveStatus").textContent = "refresh failed: " + e.message;
@@ -1229,6 +1230,18 @@ function groupTable(title, groups, labels) {
     keys.map(k => { const g = groups[k]; return `<tr><td class="l">${esc((labels && labels[k]) || k)}</td><td class="num">${g.signals}</td><td class="num">${g.scored}</td><td class="num pos">${g.targets}</td><td class="num neg">${g.stops}</td><td class="num">${g.timeouts}</td><td class="num dim">${g.not_filled}</td><td class="num">${g.hit_rate === null ? "–" : g.hit_rate + "%"}</td><td class="num ${sgn(g.avg_r)}">${rr(g.avg_r)}</td></tr>`; }).join("") +
     `</tbody></table></div>`;
 }
+/* Outcome: did price reach the suggested target the same day? (live signals; set by the 10 s refresh and Score).
+   Older / replay rows fall back to the R-scored outcome. */
+function outcomeCell(x) {
+  const m = x.metrics || {}, scored = x.outcome ? esc(x.outcome.replace("_", " ")) : "";
+  if (m.target_status === "hit") {
+    const at = m.target_hit_at ? " " + new Date(m.target_hit_at + "+05:30").toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<span class="pill pill--target">Target hit${at}</span>`;
+  }
+  if (m.target_status === "failed") return `<span class="pill pill--stop">Failed</span>`;
+  if (x.source === "live" && x.target && x.trade_date === istDate()) return `<span class="pill pill--watching">Open</span>`;
+  return scored ? `<span class="pill pill--${OUTCOME_PILL[x.outcome] || "closed"}">${scored}</span>` : '<span class="dim">–</span>';
+}
 function renderSignals(data) {
   const s = data.summary;
   $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
@@ -1240,7 +1253,7 @@ function renderSignals(data) {
       <td class="l">${esc(x.day_type || "")}</td><td class="l">${esc((x.metrics || {}).confirmation || "")}</td>
       <td class="num">${num2(x.entry)}</td><td class="num">${num2(x.stop)}</td><td class="num">${num2(x.target)}</td>
       <td class="l">${esc(x.action || "")}${x.skip_reason ? ` <span class="dim">(${esc(x.skip_reason)})</span>` : ""}</td>
-      <td class="l">${x.outcome ? `<span class="pill pill--${OUTCOME_PILL[x.outcome] || "closed"}">${esc(x.outcome.replace("_", " "))}</span>` : '<span class="dim">–</span>'}</td>
+      <td class="l">${outcomeCell(x)}</td>
       <td class="num ${sgn(x.outcome_r)}">${rr(x.outcome_r)}</td><td class="num dim">${x.mfe_r === null ? "–" : rr(x.mfe_r) + " · " + rr(x.mae_r)}</td></tr>`).join("") ||
       `<tr><td colspan="14" class="dim l">No signals in this range yet.</td></tr>`) + `</tbody>`;
 }
