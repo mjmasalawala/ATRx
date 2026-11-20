@@ -220,7 +220,7 @@ def test_manage_position_prompts():
     assert any(p["kind"] == "move_stop" for p in out["prompts"])
 
     late = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 10, 12))
-    assert any("Time stop" in w for w in late["warnings"]) is False  # +1R, so no time stop
+    assert not any("Time stop" in w for w in late["warnings"]) and "time_stop_left" not in late
     flat = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 15, 0))
     assert any("exit everything" in w for w in flat["warnings"])
 
@@ -317,3 +317,14 @@ def test_repeat_reason_checks_every_earlier_entry():
     prior = [{"entry": 500.0, "episode": "a"}, {"entry": 560.0, "episode": "b"}]
     assert repeat_reason(prior, "c", 565.0, 15.0, HVConfig()) is not None
     assert repeat_reason(prior, "c", 530.0, 15.0, HVConfig()) is None     # 30 from both earlier entries
+
+
+def test_no_time_stop_exit_prompt_however_long_the_trade_has_been_open():
+    cfg = HVConfig()
+    bars = _dip_day()
+    ev = evaluate(bars, CTX, None, None, cfg, datetime(2026, 10, 22, 9, 40, 5))
+    pos = {"avg_entry": 414.8, "open_qty": 132, "entry_qty": 132, "entry_fills": 1, "planned_stop": 411.85,
+           "risk_amount": 499, "opened_at": datetime(2026, 10, 22, 9, 40)}
+    out = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 11, 30))  # 110 minutes later, nowhere near +0.5R
+    assert not any("Time stop" in w for w in out["warnings"])
+    assert "time_stop_left" not in out

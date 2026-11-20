@@ -529,9 +529,6 @@ def manage_position(position: dict, bars_1m: list[dict], ev: dict, nifty: dict |
     if opened:
         mins = (now - opened).total_seconds() / 60
         out["minutes_in"] = int(mins)
-        out["time_stop_left"] = max(0, int(cfg.time_stop_minutes - mins))
-        if mins >= cfg.time_stop_minutes and (r_now is None or r_now < 0.5):
-            warnings.append(f"Time stop: not at +0.5R after {cfg.time_stop_minutes} minutes -- exit")
     flat = _hhmm(cfg.flat_by)
     if now.time() >= flat:
         warnings.append(f"It's {cfg.flat_by}: exit everything now")

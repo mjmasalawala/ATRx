@@ -41,7 +41,7 @@ class HVConfig:
     entry_start: str = "09:20"
     entry_end: str = "14:30"
     flat_by: str = "15:00"
-    time_stop_minutes: int = 30         # exit if not at +0.5R within this
+    time_stop_minutes: int = 30         # signal scoring window only (no exit prompt: a target counts up to T+3)
     band_no_entry_pct: float = 3.0      # no entries this close to a circuit limit
     band_exit_pct: float = 1.5          # exit at once this close to it
     min_band_pct: float = 5.0           # stocks with a price band this narrow are never traded

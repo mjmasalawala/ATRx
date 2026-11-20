@@ -324,7 +324,7 @@
     <div id="replayInfo" class="hint" style="margin-top:8px">Replay runs the same detector over about the last 60 days of 1-minute data (days with 10+ earlier sessions), one stock at a time. Re-running replaces that stock's replay rows. No live quote exists in a replay, so the spread and circuit checks are skipped.</div>
   </div>
   <div id="sigSummary" class="section card"></div>
-  <div class="section card"><h3>Signals</h3><div id="sigFilters" style="margin:6px 0 10px"><span class="chip" id="sigEntryOnly" role="button" tabindex="0" aria-pressed="false">Entry zone</span></div><div class="table-wrap"><table id="sigTable"></table></div></div>
+  <div class="section card"><h3>Signals</h3><div id="sigFilters" style="margin:6px 0 10px"><span class="chip on" id="sigEntryOnly" role="button" tabindex="0" aria-pressed="true">Entry zone</span></div><div class="table-wrap"><table id="sigTable"></table></div></div>
 </div>
 
 <div id="toasts"></div>
@@ -356,7 +356,6 @@ const TIPS = {
   size: ["Size", "Shares = the smallest of three caps: 1R ÷ loss per share, 1% of the stock's average 5-minute traded value, and the exposure left.", "The binding cap is named. Liquidity binding is normal in small caps.", "Buy exactly this many. Never round up."],
   r: ["R", "A result in units of planned risk. 1R = your planned loss on one trade.", "+1.5R = made 1.5 times what you risked. −1R = a normal loss.", "Read every trade and the day in R, not rupees. A loss beyond −1R means a stop was missed."],
   open_risk: ["Open risk", "Total R lost if every open position hit its stop now.", "Never above 1.5R across correlated positions.", "When it is high, wait for one trade to close."],
-  time_stop: ["Time stop", "Minutes left for the trade to reach +0.5R.", "A bounce that doesn't come in 30 minutes usually isn't coming.", "At zero, exit at market."],
   day_r: ["Day P&L", "Today's realised net P&L in R and rupees.", "The day stops at −2% of capital, after 3 losses in a row, or after giving back half of a +4R peak.", "When the banner says Day stopped, close anything open in Kite and log off."],
   streak: ["Loss streak", "Losing trades in a row today.", "2 in a row: a 10-minute cool-off. 3: done for the day.", "Use the cool-off to step away, not to look for the next trade."],
   exposure: ["Exposure", "Total notional of open positions against the cap (2x capital).", "MIS allows up to 5x; this page stops at 2x.", "No new entries once the cap is used."],
@@ -369,7 +368,7 @@ let DAY = { gift_nifty: null, note: "", focus: [] };
 let ROWS = {};            // symbol -> { focus, bias, tags[], note, pre_meta }
 let CAND = null;          // last /api/hv-candidates response
 let JOURNAL = null;       // last /api/hv-journal response
-let JOURNAL_DAYS = 30, SIG_DAYS = 30, SIG_ENTRY_ONLY = false, SIG_DATA = null;
+let JOURNAL_DAYS = 30, SIG_DAYS = 30, SIG_ENTRY_ONLY = true, SIG_DATA = null;
 let LIVE = null;          // last /api/hv-live response
 let LOGGED_IN = false;
 let pollTimer = null, saveTimer = null;
@@ -486,7 +485,7 @@ const SETTING_TIPS = {
   entry_start: ["Earliest time new entries are allowed (HH:MM).", "Later: skips the noisy open. Earlier: catches the first flush."],
   entry_end: ["Last time a new entry is allowed (HH:MM).", "Later: more setups but less time to exit. Keep it at least time-stop minutes before Flat by."],
   flat_by: ["Time everything must be closed (HH:MM).", "Earlier: avoids the closing session and MIS square-off. Later: more room for trades."],
-  time_stop_minutes: ["Exit if the trade has not reached +0.5R within this many minutes.", "Shorter: cuts stalled trades fast. Longer: gives bounces more time."],
+  time_stop_minutes: ["How many minutes after a fill the Score button waits for target or stop before scoring a signal as a time-out. It no longer prompts an exit.", "Shorter: scores signals sooner and judges them on a quicker move. Longer: waits longer before calling a time-out."],
   band_no_entry_pct: ["No new entries this close to a circuit limit.", "Higher: keeps farther from lock risk. Lower: allows riskier entries."],
   band_exit_pct: ["Exit at once this close to a circuit limit.", "Higher: leaves earlier. Lower: risks a lock that cannot be sold."],
   min_band_pct: ["Stocks whose price band is this narrow or narrower are never traded.", "Higher: excludes more stocks. Lower: admits stocks that cannot move far."],
@@ -546,7 +545,7 @@ const SETTING_DEFS = [
   ]],
   ["Session", [
     ["entry_start", "First entry (HH:MM)", ""], ["entry_end", "Last entry (HH:MM)", ""], ["flat_by", "Flat by (HH:MM)", ""],
-    ["time_stop_minutes", "Time stop (min)", "Exit if not at +0.5R within this."],
+    ["time_stop_minutes", "Scoring window (min)", ""],
     ["band_no_entry_pct", "No entry within band (%)", "Of a circuit limit."], ["band_exit_pct", "Exit within band (%)", ""],
     ["min_band_pct", "Never trade bands ≤ (%)", ""], ["max_spread_pct", "Max spread (%)", ""],
   ]],
@@ -869,7 +868,7 @@ function updateCard(sym) {
 
   // The action area is only rebuilt when what it's for changes, so typed values survive refreshes.
   const s = ev && ev.suggestion;
-  const actSig = pos ? `pos:${pos.id}:${pos.summary.open_qty}:${(ev && ev.position) ? JSON.stringify([ev.position.prompts, ev.position.warnings, ev.position.r_now, ev.position.time_stop_left]) : ""}`
+  const actSig = pos ? `pos:${pos.id}:${pos.summary.open_qty}:${(ev && ev.position) ? JSON.stringify([ev.position.prompts, ev.position.warnings, ev.position.r_now]) : ""}`
     : (stage === "entry" && s) ? `entry:${ev.signal_id}:${s.entry}:${s.qty}:${s.ok}` : "manual";
   if (actSig === c.actSig) return;
   c.actSig = actSig;
@@ -922,7 +921,6 @@ function positionBlock(sym, pos, ev) {
       <div><div class="k">P&amp;L now${tip("r")}</div><span class="${sgn(mg.r_now)}">${rr(mg.r_now)}</span>${u ? ` <span class="dim">${money(u.net, true)}</span>` : ""}</div>
       <div><div class="k">Planned stop</div>${pos.planned_stop ? num2(pos.planned_stop) : '<span class="neg">none</span>'}${mg.stop_dist_pct !== undefined && mg.stop_dist_pct !== null ? ` <span class="dim">(${mg.stop_dist_pct}% away)</span>` : ""}</div>
       <div><div class="k">To VWAP target</div>${mg.to_target_pct !== undefined && mg.to_target_pct !== null ? pct(mg.to_target_pct) : "–"}</div>
-      <div><div class="k">Time stop${tip("time_stop")}</div>${mg.time_stop_left !== undefined ? mg.time_stop_left + " min left" : "–"}</div>
       <div><div class="k">Band distance${tip("band")}</div>${ev && ev.checks && ev.checks.lower_band_pct !== undefined ? ev.checks.lower_band_pct.toFixed(1) + "%" : "–"}</div>
     </div>
     ${(mg.warnings || []).map(w => `<div class="prompt warn">${esc(w)}</div>`).join("")}

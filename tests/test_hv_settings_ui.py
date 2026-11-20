@@ -60,3 +60,8 @@ def test_rejected_signals_are_hidden_from_the_signals_table():
 def test_signals_table_has_an_entry_zone_filter_pill():
     assert 'id="sigEntryOnly"' in HTML and ">Entry zone</span>" in HTML
     assert '(!SIG_ENTRY_ONLY || x.stage === "entry")' in HTML
+
+
+def test_entry_zone_pill_is_selected_by_default():
+    assert 'class="chip on" id="sigEntryOnly"' in HTML and 'aria-pressed="true"' in HTML
+    assert "SIG_ENTRY_ONLY = true" in HTML
