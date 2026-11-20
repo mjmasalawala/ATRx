@@ -50,12 +50,13 @@ def test_poll_floor_and_footer_default_are_10_seconds():
     assert '<span id="pollSecs">10</span>' in HTML
 
 
-def test_page_has_the_rejected_signal_mirror():
+def test_rejected_signals_are_hidden_from_the_signals_table():
     assert "function isRejectedSignal(x)" in HTML
     assert "suggestion_ok === false" in HTML and "x.target <= x.entry" in HTML
-    assert ">Rejected</span>" in HTML
+    assert "data.signals.filter(x => !isRejectedSignal(x)" in HTML
+    assert ">Rejected</span>" not in HTML
 
 
 def test_signals_table_has_an_entry_zone_filter_pill():
     assert 'id="sigEntryOnly"' in HTML and ">Entry zone</span>" in HTML
-    assert 'x => !SIG_ENTRY_ONLY || x.stage === "entry"' in HTML
+    assert '(!SIG_ENTRY_ONLY || x.stage === "entry")' in HTML
