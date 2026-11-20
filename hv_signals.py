@@ -657,11 +657,17 @@ def repeat_reason(prior_entries: list[dict], episode: str | None, price: float |
     return None
 
 
+def is_second_leg(sig: dict) -> bool:
+    """An entry signal logged while the stock was already held (the add / second-leg setup)."""
+    return bool((sig.get("metrics") or {}).get("second_leg"))
+
+
 def signal_summary(signals: list[dict]) -> dict:
     """Hit rate and average R of stored entry signals, grouped by what was
     done with them (taken / skipped / lapsed, or replay), by confirmation
     type and by day type. Only target / stop / time-out count as results.
-    Rejected entries (see is_rejected) are counted separately, not in any group."""
+    Rejected entries (see is_rejected) and second-leg entries (is_second_leg) are
+    counted separately, not in any group."""
     def group(rows):
         done = [r for r in rows if r.get("outcome") in ("target", "stop", "timeout")]
         targets = sum(1 for r in done if r["outcome"] == "target")
@@ -677,7 +683,8 @@ def signal_summary(signals: list[dict]) -> dict:
         }
 
     rejected = [s for s in signals if is_rejected(s)]
-    entries = [s for s in signals if s.get("stage") == "entry" and not is_rejected(s)]
+    second = [s for s in signals if s.get("stage") == "entry" and is_second_leg(s) and not is_rejected(s)]
+    entries = [s for s in signals if s.get("stage") == "entry" and not is_rejected(s) and not is_second_leg(s)]
     by_action: dict[str, list] = {}
     for s in entries:
         key = "replay" if s.get("source") == "replay" else (s.get("action") or "pending")
@@ -695,6 +702,7 @@ def signal_summary(signals: list[dict]) -> dict:
         "by_confirmation": {k: group(v) for k, v in by_conf.items()},
         "by_day_type": {k: group(v) for k, v in by_day.items()},
         "rejected": len(rejected),
+        "second_leg": len(second),
         "armed": {"count": len(armed), "confirmed": confirmed,
                   "confirm_rate": round(confirmed / decided * 100, 1) if decided else None},
     }

@@ -1080,7 +1080,7 @@ function daySummaryHTML() {
   const best = rs.length ? Math.max(...rs) : null, worst = rs.length ? Math.min(...rs) : null;
   let sig = "";
   if (TODAY_SIGNALS) {
-    const entries = TODAY_SIGNALS.filter(s => s.stage === "entry" && s.source === "live" && !isRejectedSignal(s));
+    const entries = TODAY_SIGNALS.filter(s => s.stage === "entry" && s.source === "live" && !isRejectedSignal(s) && !(s.metrics || {}).second_leg);
     const by = a => entries.filter(s => (s.action || "pending") === a);
     const desc = arr => { const o = {}; arr.forEach(s => { const k = s.outcome ? s.outcome.replace("_", " ") : "not scored yet"; o[k] = (o[k] || 0) + 1; }); return Object.entries(o).map(([k, v]) => `${v} ${k}`).join(", "); };
     const parts = ["taken", "skipped", "lapsed", "pending"].map(a => [a, by(a)]).filter(([, v]) => v.length).map(([a, v]) => `${v.length} ${a}${desc(v) ? ` (${desc(v)})` : ""}`);
@@ -1253,12 +1253,12 @@ function outcomeCell(x) {
 function renderSignals(data) {
   SIG_DATA = data;
   const s = data.summary;
-  $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
+  $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only${s.second_leg ? ` (${s.second_leg} second-leg entries counted separately)` : ""}. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
     (groupTable("By what you did", s.by_action, { taken: "Taken", skipped: "Skipped", lapsed: "Lapsed", pending: "Not scored / undecided", replay: "Replay" }) || `<p class="dim">No entry signals in this range yet.</p>`) +
     groupTable("By confirmation", s.by_confirmation) + groupTable("By day type", s.by_day_type);
   $("sigTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Symbol</th><th class="l">Source</th><th class="l">Stage</th><th class="l">Day type</th><th class="l">Confirmation</th><th>Entry</th><th>Stop</th><th>Target</th><th class="l">Action</th><th class="l">Outcome</th><th>R</th><th>Best · worst</th></tr></thead><tbody>` +
     (data.signals.filter(x => !isRejectedSignal(x) && (!SIG_ENTRY_ONLY || x.stage === "entry")).map(x => `<tr><td class="l num">${esc(x.trade_date)}</td><td class="l num">${new Date(x.signal_at).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}</td>
-      <td class="sym">${esc(x.symbol)}</td><td class="l dim">${esc(x.source)}</td><td class="l">${x.stage === "entry" ? "Entry zone" : "Setup armed"}</td>
+      <td class="sym">${esc(x.symbol)}</td><td class="l dim">${esc(x.source)}</td><td class="l">${x.stage === "entry" ? "Entry zone" : "Setup armed"}${(x.metrics || {}).second_leg ? ' <span class="chip static" title="Logged while you already held this stock">2nd leg</span>' : ""}</td>
       <td class="l">${esc(x.day_type || "")}</td><td class="l">${esc((x.metrics || {}).confirmation || "")}</td>
       <td class="num">${num2(x.entry)}</td><td class="num">${num2(x.stop)}</td><td class="num">${num2(x.target)}</td>
       <td class="l">${esc(x.action || "")}${x.skip_reason ? ` <span class="dim">(${esc(x.skip_reason)})</span>` : ""}</td>

@@ -328,3 +328,14 @@ def test_no_time_stop_exit_prompt_however_long_the_trade_has_been_open():
     out = manage_position(pos, bars, ev, None, cfg, datetime(2026, 10, 22, 11, 30))  # 110 minutes later, nowhere near +0.5R
     assert not any("Time stop" in w for w in out["warnings"])
     assert "time_stop_left" not in out
+
+
+def test_second_leg_entries_are_flagged_and_left_out_of_the_summary():
+    from hv_signals import is_second_leg, signal_summary
+    first = {"stage": "entry", "source": "live", "action": "taken", "outcome": "target", "outcome_r": 1.0,
+             "metrics": {"suggestion_ok": True}, "entry": 100, "target": 105, "day_type": "Range"}
+    second = {**first, "outcome_r": 5.0, "metrics": {"suggestion_ok": True, "second_leg": True}}
+    assert not is_second_leg(first) and is_second_leg(second) and not is_second_leg({"metrics": None})
+    s = signal_summary([first, second])
+    assert s["second_leg"] == 1 and s["by_action"]["taken"]["signals"] == 1
+    assert s["by_action"]["taken"]["avg_r"] == 1.0

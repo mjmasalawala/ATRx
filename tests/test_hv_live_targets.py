@@ -217,14 +217,16 @@ def test_rejected_signals_are_skipped_by_the_sweep(db, monkeypatch):
 
 # ------------------------------------------------------- repeat signals
 
-def test_prior_entries_skip_rejected_and_armed_signals(db):
+def test_prior_entries_skip_rejected_armed_and_second_leg_signals(db):
     ok = signal(1, trade_date="2026-11-19", at="2026-11-19T09:57:00+05:30", symbol="TATAINVEST", target=597.95)
     ok.update(entry=590.95, episode="09:50")
     rejected = signal(2, symbol="TATAINVEST", metrics={"suggestion_ok": False})
     rejected.update(entry=500.0, episode="x")
     armed = signal(3, symbol="TATAINVEST")
     armed.update(stage="armed", entry=None, episode="y")
-    db.signals = [ok, rejected, armed]
+    second = signal(4, symbol="TATAINVEST", target=597.95, metrics={"second_leg": True})
+    second.update(entry=589.0, episode="z")
+    db.signals = [ok, rejected, armed, second]
     out = hv_live._prior_entries(TODAY)
     assert out == {"TATAINVEST": [{"entry": 590.95, "episode": "09:50", "time": "09:57"}]}
 

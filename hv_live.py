@@ -20,7 +20,7 @@ from hv_journal import build_journal
 from hv_risk import day_state, entry_blockers, period_state, to_ist_naive
 from hv_screener import EXCHANGE, IST, get_quotes, today_ist
 from hv_signals import (build_context, evaluate, manage_position, nifty_state, replay_day, resample,
-                        score_signal, target_status, is_rejected, repeat_reason)
+                        score_signal, target_status, is_rejected, is_second_leg, repeat_reason)
 from screener import resolve_tokens
 
 logger = logging.getLogger("atrx.hv")
@@ -230,7 +230,7 @@ def _prior_entries(today: date) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     try:
         for s in db_store.list_hv_signals(today, today, source="live"):
-            if s["stage"] == "entry" and not is_rejected(s) and s["entry"] is not None:
+            if s["stage"] == "entry" and not is_rejected(s) and not is_second_leg(s) and s["entry"] is not None:
                 out.setdefault(s["symbol"], []).append(
                     {"entry": s["entry"], "episode": s["episode"],
                      "time": to_ist_naive(s["signal_at"]).strftime("%H:%M")})
@@ -304,7 +304,10 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
             if blockers:
                 ev["stage"] = "blocked"
                 ev["reasons"].extend(blockers)
-        if ev["stage"] in ("armed", "entry") and sym not in open_by_symbol:
+        holding = sym in open_by_symbol
+        # An Entry zone while you already hold the stock is a second-leg setup: logged, flagged
+        # `second_leg`, never counted as a fresh entry. Setup armed while holding is just noise.
+        if ev["stage"] == "entry" or (ev["stage"] == "armed" and not holding):
             s = ev.get("suggestion") or {}
             signal_at = now.replace(second=0, microsecond=0)
             if s.get("signal_bar"):  # an entry is timed from the end of its confirming bar
@@ -315,7 +318,8 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
                     "trade_date": today, "symbol": sym, "stage": ev["stage"], "episode": ev["episode"],
                     "signal_at": _aware(signal_at),
                     "day_type": (ev["day_type"] or {}).get("state"),
-                    "metrics": {**ev["metrics"], "suggestion_ok": s.get("ok"), "fails": s.get("fails")},
+                    "metrics": {**ev["metrics"], "suggestion_ok": s.get("ok"), "fails": s.get("fails"),
+                                **({"second_leg": True} if holding else {})},
                     "entry": s.get("entry"), "stop": s.get("stop"), "target": s.get("target"),
                     "qty": s.get("qty")})
             except Exception as e:  # the log is a record, never a reason to fail the refresh

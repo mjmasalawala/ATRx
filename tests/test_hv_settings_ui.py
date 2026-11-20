@@ -65,3 +65,7 @@ def test_signals_table_has_an_entry_zone_filter_pill():
 def test_entry_zone_pill_is_selected_by_default():
     assert 'class="chip on" id="sigEntryOnly"' in HTML and 'aria-pressed="true"' in HTML
     assert "SIG_ENTRY_ONLY = true" in HTML
+
+
+def test_signals_table_tags_second_leg_rows():
+    assert ">2nd leg</span>" in HTML and "(x.metrics || {}).second_leg" in HTML
