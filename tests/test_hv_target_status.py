@@ -23,6 +23,12 @@ def test_hit_when_a_bar_after_the_signal_reaches_target():
     assert r == {"status": "hit", "at": D.replace(hour=10, minute=5)}
 
 
+def test_a_hit_before_the_signal_never_counts_even_on_a_later_check():
+    # signal 10:02, price touched the target at 09:49 the same morning
+    sig = {"signal_at": D.replace(hour=10, minute=2), "target": 105.0}
+    assert target_status(sig, [bar(9, 49, 106)], None, D.replace(hour=11), CLOSE) is None
+
+
 def test_bars_before_the_signal_do_not_count():
     r = target_status(SIG, [bar(9, 30, 106)], None, D.replace(hour=10), CLOSE)
     assert r is None

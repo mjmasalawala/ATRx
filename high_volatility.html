@@ -1241,7 +1241,11 @@ function isRejectedSignal(x) {  // mirror of hv_signals.is_rejected
 function outcomeCell(x) {
   const m = x.metrics || {}, scored = x.outcome ? esc(x.outcome.replace("_", " ")) : "";
   if (m.target_status === "hit") {
-    const at = m.target_hit_at ? " " + new Date(m.target_hit_at + "+05:30").toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }) : "";
+    // the hit can come on a later day (T+3 window): show the date unless it is the signal's own day
+    const hit = m.target_hit_at ? new Date(m.target_hit_at + "+05:30") : null;
+    const hitDay = m.target_hit_at ? m.target_hit_at.slice(0, 10) : "";
+    const at = hit ? " " + (hitDay !== x.trade_date ? hit.toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" }) + " " : "") +
+      hit.toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }) : "";
     return `<span class="pill pill--target">Target hit${at}</span>`;
   }
   if (m.target_status === "failed") return `<span class="pill pill--stop">Failed</span>`;

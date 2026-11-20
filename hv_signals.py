@@ -577,12 +577,12 @@ def score_signal(sig: dict, bars_1m: list[dict], cfg: HVConfig) -> dict:
 
 def target_status(sig: dict, bars_1m: list[dict], last_price: float | None, now: datetime,
                   session_end: datetime) -> dict | None:
-    """Did price reach the signal's suggested target the same trading day?
+    """Did price reach the signal's suggested target within the window?
     sig: {signal_at (naive IST), target}. Returns {"status": "hit", "at": ts}
     as soon as a 1-minute bar at/after the signal (or the live price) is at
-    or above the target; {"status": "failed"} once the session has ended
-    without it; None while the day is still open. Fill and stop are ignored:
-    this only asks whether the target price was reached."""
+    or above the target; {"status": "failed"} once `session_end` has passed
+    without it; None while still open. Fill and stop are ignored: this only
+    asks whether the target price was reached."""
     target = sig.get("target")
     if not target:
         return None
