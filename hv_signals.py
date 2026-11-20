@@ -315,7 +315,9 @@ def evaluate(bars_1m: list[dict], ctx: dict | None, quote: dict | None, nifty: d
     # -- stretch
     sig_dist = (price - vw) / sigma if sigma > 0 else 0.0
     atr_off = (session_high - price) / atr if atr else 0.0
-    stretched = sig_dist <= -cfg.stretch_sigma or atr_off >= cfg.stretch_atr
+    # Off the high in ATRs only counts while price is also below VWAP: above it the
+    # VWAP target sits under the entry and the trade can't pay.
+    stretched = sig_dist <= -cfg.stretch_sigma or (atr_off >= cfg.stretch_atr and price < vw)
     m["stretch_sigma"] = round(sig_dist, 2)
     m["off_high_atr"] = round(atr_off, 2)
 
@@ -626,10 +628,23 @@ def replay_day(bars_1m: list[dict], ctx: dict, nifty_1m: list[dict], cfg: HVConf
 
 # --------------------------------------------------------------- summary
 
+def is_rejected(sig: dict) -> bool:
+    """An entry signal whose own suggestion failed its checks (net R:R, price
+    already ran, spread, band, size) or whose target is not above its entry.
+    It is logged for the record but never counted as a result."""
+    if sig.get("stage") != "entry":
+        return False
+    if (sig.get("metrics") or {}).get("suggestion_ok") is False:
+        return True
+    entry, target = sig.get("entry"), sig.get("target")
+    return entry is not None and target is not None and target <= entry
+
+
 def signal_summary(signals: list[dict]) -> dict:
     """Hit rate and average R of stored entry signals, grouped by what was
     done with them (taken / skipped / lapsed, or replay), by confirmation
-    type and by day type. Only target / stop / time-out count as results."""
+    type and by day type. Only target / stop / time-out count as results.
+    Rejected entries (see is_rejected) are counted separately, not in any group."""
     def group(rows):
         done = [r for r in rows if r.get("outcome") in ("target", "stop", "timeout")]
         targets = sum(1 for r in done if r["outcome"] == "target")
@@ -644,7 +659,8 @@ def signal_summary(signals: list[dict]) -> dict:
             "avg_r": round(sum(r["outcome_r"] for r in done) / len(done), 2) if done else None,
         }
 
-    entries = [s for s in signals if s.get("stage") == "entry"]
+    rejected = [s for s in signals if is_rejected(s)]
+    entries = [s for s in signals if s.get("stage") == "entry" and not is_rejected(s)]
     by_action: dict[str, list] = {}
     for s in entries:
         key = "replay" if s.get("source") == "replay" else (s.get("action") or "pending")
@@ -661,6 +677,7 @@ def signal_summary(signals: list[dict]) -> dict:
         "by_action": {k: group(v) for k, v in by_action.items()},
         "by_confirmation": {k: group(v) for k, v in by_conf.items()},
         "by_day_type": {k: group(v) for k, v in by_day.items()},
+        "rejected": len(rejected),
         "armed": {"count": len(armed), "confirmed": confirmed,
                   "confirm_rate": round(confirmed / decided * 100, 1) if decided else None},
     }

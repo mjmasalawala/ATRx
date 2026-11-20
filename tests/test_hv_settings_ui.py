@@ -48,3 +48,9 @@ def test_each_tooltip_has_use_and_effect_text():
 def test_poll_floor_and_footer_default_are_10_seconds():
     assert "Math.max(10, SETTINGS.poll_seconds)" in HTML
     assert '<span id="pollSecs">10</span>' in HTML
+
+
+def test_page_has_the_rejected_signal_mirror():
+    assert "function isRejectedSignal(x)" in HTML
+    assert "suggestion_ok === false" in HTML and "x.target <= x.entry" in HTML
+    assert ">Rejected</span>" in HTML

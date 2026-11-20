@@ -1081,7 +1081,7 @@ function daySummaryHTML() {
   const best = rs.length ? Math.max(...rs) : null, worst = rs.length ? Math.min(...rs) : null;
   let sig = "";
   if (TODAY_SIGNALS) {
-    const entries = TODAY_SIGNALS.filter(s => s.stage === "entry" && s.source === "live");
+    const entries = TODAY_SIGNALS.filter(s => s.stage === "entry" && s.source === "live" && !isRejectedSignal(s));
     const by = a => entries.filter(s => (s.action || "pending") === a);
     const desc = arr => { const o = {}; arr.forEach(s => { const k = s.outcome ? s.outcome.replace("_", " ") : "not scored yet"; o[k] = (o[k] || 0) + 1; }); return Object.entries(o).map(([k, v]) => `${v} ${k}`).join(", "); };
     const parts = ["taken", "skipped", "lapsed", "pending"].map(a => [a, by(a)]).filter(([, v]) => v.length).map(([a, v]) => `${v.length} ${a}${desc(v) ? ` (${desc(v)})` : ""}`);
@@ -1232,8 +1232,14 @@ function groupTable(title, groups, labels) {
 }
 /* Outcome: did price reach the suggested target within the signal day + 3 sessions (T+3)? Live signals; hit is set by the 10 s refresh, failed by the end-of-day sweep / Score.
    Older / replay rows fall back to the R-scored outcome. */
+function isRejectedSignal(x) {  // mirror of hv_signals.is_rejected
+  if (x.stage !== "entry") return false;
+  if ((x.metrics || {}).suggestion_ok === false) return true;
+  return x.entry !== null && x.target !== null && x.target <= x.entry;
+}
 function outcomeCell(x) {
   const m = x.metrics || {}, scored = x.outcome ? esc(x.outcome.replace("_", " ")) : "";
+  if (isRejectedSignal(x)) return `<span class="pill pill--closed" title="${esc((m.fails || []).join("; ") || "target not above entry")}">Rejected</span>`;
   if (m.target_status === "hit") {
     const at = m.target_hit_at ? " " + new Date(m.target_hit_at + "+05:30").toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }) : "";
     return `<span class="pill pill--target">Target hit${at}</span>`;
@@ -1244,7 +1250,7 @@ function outcomeCell(x) {
 }
 function renderSignals(data) {
   const s = data.summary;
-  $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
+  $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only${s.rejected ? ` (${s.rejected} rejected by their own checks are left out)` : ""}. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
     (groupTable("By what you did", s.by_action, { taken: "Taken", skipped: "Skipped", lapsed: "Lapsed", pending: "Not scored / undecided", replay: "Replay" }) || `<p class="dim">No entry signals in this range yet.</p>`) +
     groupTable("By confirmation", s.by_confirmation) + groupTable("By day type", s.by_day_type);
   $("sigTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Symbol</th><th class="l">Source</th><th class="l">Stage</th><th class="l">Day type</th><th class="l">Confirmation</th><th>Entry</th><th>Stop</th><th>Target</th><th class="l">Action</th><th class="l">Outcome</th><th>R</th><th>Best · worst</th></tr></thead><tbody>` +

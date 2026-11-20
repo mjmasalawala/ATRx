@@ -20,7 +20,7 @@ from hv_journal import build_journal
 from hv_risk import day_state, entry_blockers, period_state, to_ist_naive
 from hv_screener import EXCHANGE, IST, get_quotes, today_ist
 from hv_signals import (build_context, evaluate, manage_position, nifty_state, replay_day, resample,
-                        score_signal, target_status)
+                        score_signal, target_status, is_rejected)
 from screener import resolve_tokens
 
 logger = logging.getLogger("atrx.hv")
@@ -155,7 +155,7 @@ def _pending_target_signals(today: date) -> list[dict]:
     """Live signals with a target and no hit / failed status yet, from the
     last two weeks (more than enough for T+3 plus holidays)."""
     return [s for s in db_store.list_hv_signals(today - timedelta(days=14), today, source="live")
-            if s["target"] and not (s["metrics"] or {}).get("target_status")]
+            if s["target"] and not (s["metrics"] or {}).get("target_status") and not is_rejected(s)]
 
 
 def _resolve_targets(today: date, now: datetime, bars: dict, last_prices: dict) -> int:
@@ -342,6 +342,8 @@ def score_day(kite: KiteConnect, cfg: HVConfig, trade_date: date) -> dict:
             elif window_closed:
                 scores.append({"id": s["id"], "outcome": "no_confirm"})
             continue
+        if is_rejected(s):
+            continue  # the page itself said skip; it is not a result to score
         if s["symbol"] not in bars:
             c = contexts.get(s["symbol"])
             if not c:

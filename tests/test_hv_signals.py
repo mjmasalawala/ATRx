@@ -240,3 +240,52 @@ def test_signal_summary_groups_by_action():
     assert s["by_action"]["replay"]["not_filled"] == 1 and s["by_action"]["replay"]["hit_rate"] is None
     assert s["by_confirmation"]["higher low"]["scored"] == 2
     assert s["armed"]["confirm_rate"] == 50.0
+
+
+def _spike_day(final_price):
+    """Opens flat at 425 (VWAP ~425), one thin-volume spike to 440, then sits
+    at final_price: 0.4+ daily ATRs under the session high either way."""
+    t = datetime(2026, 10, 22, 9, 15)
+    bars = [{"ts": t + timedelta(minutes=i), "open": 425, "high": 425.4, "low": 424.6, "close": 425,
+             "volume": V // 5} for i in range(15)]
+    bars.append(_bar("09:30", 425, 440, 425, final_price, 10))
+    for i in range(1, 12):
+        bars.append({"ts": datetime(2026, 10, 22, 9, 30) + timedelta(minutes=i), "open": final_price,
+                     "high": final_price + 0.2, "low": final_price - 0.2, "close": final_price, "volume": 10})
+    return bars
+
+
+def test_off_the_high_alone_is_not_stretched_while_price_is_above_vwap():
+    ev = evaluate(_spike_day(432), CTX, None, None, HVConfig(), datetime(2026, 10, 22, 9, 42, 5))
+    assert ev["metrics"]["off_high_atr"] >= HVConfig().stretch_atr   # the ATR test alone would pass
+    assert ev["metrics"]["stretch_sigma"] > 0                         # but price is above VWAP
+    assert ev["stage"] == "watching"
+
+
+def test_off_the_high_counts_once_price_is_below_vwap():
+    ev = evaluate(_spike_day(418), CTX, None, None, HVConfig(), datetime(2026, 10, 22, 9, 42, 5))
+    assert ev["metrics"]["off_high_atr"] >= HVConfig().stretch_atr
+    assert ev["metrics"]["stretch_sigma"] < 0
+    assert ev["stage"] != "watching"
+
+
+def test_is_rejected_flags_failed_suggestions_and_targets_not_above_entry():
+    from hv_signals import is_rejected
+    assert is_rejected({"stage": "entry", "metrics": {"suggestion_ok": False}, "entry": 100, "target": 105})
+    assert is_rejected({"stage": "entry", "metrics": {}, "entry": 361.8, "target": 360.25})
+    assert is_rejected({"stage": "entry", "metrics": None, "entry": 100, "target": 100})
+    assert not is_rejected({"stage": "entry", "metrics": {"suggestion_ok": True}, "entry": 100, "target": 105})
+    assert not is_rejected({"stage": "entry", "metrics": {}, "entry": None, "target": None})  # replay row, no data
+    assert not is_rejected({"stage": "armed", "metrics": {"suggestion_ok": False}, "entry": 100, "target": 90})
+
+
+def test_signal_summary_leaves_rejected_entries_out_and_counts_them():
+    from hv_signals import signal_summary
+    ok = {"stage": "entry", "source": "live", "action": "taken", "outcome": "target", "outcome_r": 1.0,
+          "metrics": {"suggestion_ok": True}, "entry": 100, "target": 105, "day_type": "Range"}
+    bad = {"stage": "entry", "source": "live", "action": "lapsed", "outcome": "target", "outcome_r": 9.0,
+           "metrics": {"suggestion_ok": False}, "entry": 100, "target": 99, "day_type": "Range"}
+    s = signal_summary([ok, bad])
+    assert s["rejected"] == 1
+    assert s["by_action"]["taken"]["signals"] == 1 and "lapsed" not in s["by_action"]
+    assert s["by_day_type"]["Range"]["signals"] == 1

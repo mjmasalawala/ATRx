@@ -189,3 +189,27 @@ def test_sweep_skips_symbols_with_no_watch_context(db, monkeypatch):
     db.contexts = {}
     monkeypatch.setattr(hv_live, "fetch_candles", lambda *a, **k: pytest.fail("should not fetch"))
     assert hv_live.sweep_targets(object(), AFTER_CLOSE) == 0
+
+
+# ------------------------------------------------------ rejected signals
+
+def test_rejected_signals_are_never_resolved_intraday(db):
+    db.signals = [signal(1, trade_date="2026-11-19", at="2026-11-19T09:40:00+05:30", target=360.25,
+                         metrics={"suggestion_ok": False, "fails": ["net R:R -1.72 under 1.2"]})]
+    db.signals[0]["entry"] = 361.8
+    assert hv_live._resolve_targets(TODAY, NOW, {"ABC": [bar(TODAY, 10, 0, 500)]}, {"ABC": 500}) == 0
+    assert db.saved == []
+
+
+def test_target_at_or_below_entry_is_rejected_even_without_the_flag(db):
+    db.signals = [signal(1, trade_date="2026-11-19", at="2026-11-19T09:40:00+05:30", target=360.25)]
+    db.signals[0]["entry"] = 361.8
+    assert hv_live._resolve_targets(TODAY, NOW, {"ABC": [bar(TODAY, 10, 0, 500)]}, {}) == 0
+
+
+def test_rejected_signals_are_skipped_by_the_sweep(db, monkeypatch):
+    db.signals = [signal(metrics={"suggestion_ok": False})]
+    db.signals[0]["entry"] = 100.0
+    sweep_setup(db, monkeypatch, [])
+    monkeypatch.setattr(hv_live, "fetch_candles", lambda *a, **k: pytest.fail("should not fetch"))
+    assert hv_live.sweep_targets(object(), AFTER_CLOSE) == 0
