@@ -20,7 +20,7 @@ from hv_journal import build_journal
 from hv_risk import day_state, entry_blockers, period_state, to_ist_naive
 from hv_screener import EXCHANGE, IST, get_quotes, today_ist
 from hv_signals import (build_context, evaluate, manage_position, nifty_state, replay_day, resample,
-                        score_signal, target_status, is_rejected)
+                        score_signal, target_status, is_rejected, repeat_reason)
 from screener import resolve_tokens
 
 logger = logging.getLogger("atrx.hv")
@@ -225,6 +225,28 @@ def sweep_targets(kite: KiteConnect, now: datetime) -> int:
     return len(updates)
 
 
+def _prior_entries(today: date) -> dict[str, list[dict]]:
+    """Today's stored, non-rejected live entry signals by symbol."""
+    out: dict[str, list[dict]] = {}
+    try:
+        for s in db_store.list_hv_signals(today, today, source="live"):
+            if s["stage"] == "entry" and not is_rejected(s) and s["entry"] is not None:
+                out.setdefault(s["symbol"], []).append(
+                    {"entry": s["entry"], "episode": s["episode"],
+                     "time": to_ist_naive(s["signal_at"]).strftime("%H:%M")})
+    except Exception as e:  # without the history the repeat check is skipped, nothing else changes
+        logger.warning("Could not load today's signals for the repeat check: %s", e)
+    return out
+
+
+def _repeat_blocker(ev: dict, priors: list[dict], ctx: dict | None, cfg: HVConfig) -> str | None:
+    """A reason to block an armed / entry card that merely repeats an earlier
+    entry signal on the same stock today (price within reentry_atr ATRs)."""
+    price = ((ev.get("suggestion") or {}).get("entry") if ev.get("stage") == "entry"
+             else (ev.get("metrics") or {}).get("price"))
+    return repeat_reason(priors, ev.get("episode"), price, (ctx or {}).get("atr") or 0.0, cfg)
+
+
 def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: list[str]) -> dict:
     now = now_ist()
     today = now.date()
@@ -262,6 +284,7 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
     one_r = cfg.one_r * period["size_mult"]
     nifty_down = bool(nifty and nifty["state"] == "Trend down")
     open_by_symbol = {p["symbol"]: p for p in todays if p["summary"]["status"] == "open"}
+    prior_entries = _prior_entries(today)
 
     cards = {}
     for sym in symbols:
@@ -275,6 +298,9 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
                                              nifty, cfg, now)
         elif ev["stage"] in ("armed", "entry"):
             blockers = entry_blockers(sym, day, cfg, nifty_down)
+            again = _repeat_blocker(ev, prior_entries.get(sym, []), ctx, cfg)
+            if again:
+                blockers = blockers + [again]
             if blockers:
                 ev["stage"] = "blocked"
                 ev["reasons"].extend(blockers)

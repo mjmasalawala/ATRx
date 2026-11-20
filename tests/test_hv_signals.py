@@ -289,3 +289,31 @@ def test_signal_summary_leaves_rejected_entries_out_and_counts_them():
     assert s["rejected"] == 1
     assert s["by_action"]["taken"]["signals"] == 1 and "lapsed" not in s["by_action"]
     assert s["by_day_type"]["Range"]["signals"] == 1
+
+
+def test_repeat_reason_blocks_a_second_entry_within_one_atr():
+    from hv_signals import repeat_reason
+    cfg = HVConfig()  # reentry_atr = 1.0
+    prior = [{"entry": 590.95, "episode": "09:50", "time": "09:57"}]
+    # TATAINVEST 17 Nov: second entry 590.05, same day, daily ATR ~ 15
+    assert "same setup" in repeat_reason(prior, "09:58", 590.05, 15.0, cfg)
+    assert repeat_reason(prior, "09:58", 590.05 - 16, 15.0, cfg) is None   # a full ATR lower: a new setup
+    assert repeat_reason(prior, "09:58", 590.95 + 16, 15.0, cfg) is None   # or a full ATR higher
+
+
+def test_repeat_reason_ignores_the_signals_own_episode_and_missing_data():
+    from hv_signals import repeat_reason
+    cfg = HVConfig()
+    prior = [{"entry": 590.95, "episode": "09:50"}]
+    assert repeat_reason(prior, "09:50", 590.95, 15.0, cfg) is None        # the same signal re-shown
+    assert repeat_reason([], "09:58", 590.0, 15.0, cfg) is None
+    assert repeat_reason(prior, "09:58", None, 15.0, cfg) is None
+    assert repeat_reason(prior, "09:58", 590.0, 0.0, cfg) is None
+    assert repeat_reason(prior, "09:58", 590.0, 15.0, HVConfig(reentry_atr=0)) is None
+
+
+def test_repeat_reason_checks_every_earlier_entry():
+    from hv_signals import repeat_reason
+    prior = [{"entry": 500.0, "episode": "a"}, {"entry": 560.0, "episode": "b"}]
+    assert repeat_reason(prior, "c", 565.0, 15.0, HVConfig()) is not None
+    assert repeat_reason(prior, "c", 530.0, 15.0, HVConfig()) is None     # 30 from both earlier entries

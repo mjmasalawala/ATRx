@@ -60,6 +60,7 @@ class HVConfig:
     level_atr: float = 0.1              # "at a level" = within this many ATRs of one
     gap_atr: float = 0.7                # gap down bigger than this -> wait for a VWAP reclaim
     entry_valid_bars: int = 2           # an entry suggestion lapses after this many 1-min bars
+    reentry_atr: float = 1.0            # a new entry on a stock needs price this many daily ATRs from its earlier entry signals that day
     strip_size: int = 6                 # shortlist stocks scanned besides the focus list
 
     # --- Pre-open shortlist ---

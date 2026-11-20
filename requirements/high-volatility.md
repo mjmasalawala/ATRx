@@ -105,6 +105,8 @@ The user decided win rate by ticker and by time of day are *analytics*, not dash
 
 ## Gotchas / open items
 
+- **No repeat entries:** once a stock has given an entry signal today, a new armed / entry card on it is blocked ("within 1 ATR of the earlier entry signal ... same setup") unless price is at least `reentry_atr` (default 1.0) daily ATRs from every earlier non-rejected entry price that day (`hv_signals.repeat_reason`, applied in `hv_live._repeat_blocker`; distance is measured either way). Cause: `episode` is the 30-minute flush-low time, so the same bounce re-armed as a new episode (TATAINVEST 17 Nov: entry 09:57, armed 10:00 / 10:01, entry 10:02 at almost the same price). Blocked cards show the reason and are not logged. `reentry_atr = 0` turns it off.
+
 - **Rejected signals:** every Entry-zone signal is logged, including ones whose suggestion failed (net R:R, price already ran, spread, band, size). They carry `metrics.suggestion_ok = false` / `fails`; the Outcome column shows `Rejected` (hover for the reasons) and `signal_summary` reports them as `rejected` instead of counting them. Origin: ETERNAL 19 Nov 2026 11:16 -- price above VWAP, target (VWAP 360.24) under the 361.80 entry, net R:R -1.72.
 
 - **Polling is 10 s** (`poll_seconds`, client floor 10). A value saved earlier in Settings (e.g. 30) overrides the code default -- change it in Settings. ~10 Kite calls per poll at 3/s takes ~3-4 s, so there is little slack with many watched stocks.

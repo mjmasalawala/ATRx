@@ -640,6 +640,26 @@ def is_rejected(sig: dict) -> bool:
     return entry is not None and target is not None and target <= entry
 
 
+def repeat_reason(prior_entries: list[dict], episode: str | None, price: float | None, atr: float,
+                  cfg: HVConfig) -> str | None:
+    """Why a new setup on a stock that already gave an entry signal today is
+    just the same setup again, or None. `prior_entries`: the stock's stored
+    entry signals for today ({entry, episode, signal_at}); rejected ones are
+    ignored by the caller. Another entry (or arming) is allowed only when
+    price is at least cfg.reentry_atr daily ATRs from every earlier entry
+    price. The signal's own episode never counts against itself."""
+    if not price or not atr or not cfg.reentry_atr:
+        return None
+    need = cfg.reentry_atr * atr
+    for p in prior_entries:
+        if p.get("entry") is None or p.get("episode") == episode:
+            continue
+        if abs(price - p["entry"]) < need:
+            return (f"within {cfg.reentry_atr:g} ATR of the earlier entry signal at {p['entry']:g} "
+                    f"({p.get('time') or 'earlier today'}) -- same setup, not a new one")
+    return None
+
+
 def signal_summary(signals: list[dict]) -> dict:
     """Hit rate and average R of stored entry signals, grouped by what was
     done with them (taken / skipped / lapsed, or replay), by confirmation

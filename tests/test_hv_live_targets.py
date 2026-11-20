@@ -213,3 +213,37 @@ def test_rejected_signals_are_skipped_by_the_sweep(db, monkeypatch):
     sweep_setup(db, monkeypatch, [])
     monkeypatch.setattr(hv_live, "fetch_candles", lambda *a, **k: pytest.fail("should not fetch"))
     assert hv_live.sweep_targets(object(), AFTER_CLOSE) == 0
+
+
+# ------------------------------------------------------- repeat signals
+
+def test_prior_entries_skip_rejected_and_armed_signals(db):
+    ok = signal(1, trade_date="2026-11-19", at="2026-11-19T09:57:00+05:30", symbol="TATAINVEST", target=597.95)
+    ok.update(entry=590.95, episode="09:50")
+    rejected = signal(2, symbol="TATAINVEST", metrics={"suggestion_ok": False})
+    rejected.update(entry=500.0, episode="x")
+    armed = signal(3, symbol="TATAINVEST")
+    armed.update(stage="armed", entry=None, episode="y")
+    db.signals = [ok, rejected, armed]
+    out = hv_live._prior_entries(TODAY)
+    assert out == {"TATAINVEST": [{"entry": 590.95, "episode": "09:50", "time": "09:57"}]}
+
+
+def test_prior_entries_survive_a_db_error(monkeypatch):
+    class Broken:
+        def list_hv_signals(self, *a, **k):
+            raise RuntimeError("db down")
+    monkeypatch.setattr(hv_live, "db_store", Broken())
+    assert hv_live._prior_entries(TODAY) == {}
+
+
+def test_repeat_blocker_uses_the_suggested_entry_for_entry_cards_and_price_for_armed():
+    from hv_config import HVConfig
+    priors = [{"entry": 590.95, "episode": "09:50", "time": "09:57"}]
+    ctx = {"atr": 15.0}
+    entry_card = {"stage": "entry", "episode": "10:00", "suggestion": {"entry": 590.05}, "metrics": {"price": 700}}
+    armed_card = {"stage": "armed", "episode": "10:00", "metrics": {"price": 590.4}}
+    assert "same setup" in hv_live._repeat_blocker(entry_card, priors, ctx, HVConfig())
+    assert "same setup" in hv_live._repeat_blocker(armed_card, priors, ctx, HVConfig())
+    assert hv_live._repeat_blocker({**armed_card, "metrics": {"price": 560.0}}, priors, ctx, HVConfig()) is None
+    assert hv_live._repeat_blocker(armed_card, priors, None, HVConfig()) is None   # no ATR known

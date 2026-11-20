@@ -501,6 +501,7 @@ const SETTING_TIPS = {
   level_atr: ["How close (in ATRs) a flush low must be to a marked level.", "Higher: more lows count as at a level. Lower: stricter."],
   gap_atr: ["A gap down bigger than this many ATRs waits for a VWAP reclaim.", "Lower: waits on more gaps. Higher: buys through larger gaps."],
   entry_valid_bars: ["1-minute bars an entry suggestion stays valid.", "Higher: more time to place the order but staler prices. Lower: forces quick action."],
+  reentry_atr: ["After an entry signal on a stock, price must be this many daily ATRs away from that entry before another setup is shown.", "Higher: fewer repeat signals on the same move. Lower: allows closer re-entries. 0 turns the check off."],
   strip_size: ["Extra shortlist stocks scanned besides your picks.", "Higher: more opportunities, more Kite calls per refresh. Lower: lighter and faster."],
   poll_seconds: ["How often the live tab refreshes (minimum 10).", "Lower: fresher signals but more Kite calls. Higher: lighter load, laggier signals."],
   target_round_trips: ["Winning round trips that count as done for the day.", "Higher: a bigger daily goal. Lower: stop sooner."],
@@ -554,7 +555,7 @@ const SETTING_DEFS = [
     ["rsi_period", "RSI period (5-min bars)", ""], ["rsi_max", "RSI exhausted below", ""], ["rsi_exit", "RSI exit warning above", ""],
     ["volume_spike_x", "Volume spike (×)", "vs that time of day's normal volume."], ["wick_frac", "Lower wick share", ""],
     ["level_atr", "Level tolerance (ATR)", ""], ["gap_atr", "Big gap (ATR)", "Gap down bigger than this waits for a VWAP reclaim."],
-    ["entry_valid_bars", "Entry valid (1-min bars)", ""], ["strip_size", "Also-setting-up stocks", "Shortlist stocks scanned besides your picks."],
+    ["entry_valid_bars", "Entry valid (1-min bars)", ""], ["reentry_atr", "Re-entry distance (ATR)", ""], ["strip_size", "Also-setting-up stocks", "Shortlist stocks scanned besides your picks."],
     ["poll_seconds", "Refresh every (s)", ""],
   ]],
   ["Your routine", [
