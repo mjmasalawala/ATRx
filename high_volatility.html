@@ -1230,7 +1230,7 @@ function groupTable(title, groups, labels) {
     keys.map(k => { const g = groups[k]; return `<tr><td class="l">${esc((labels && labels[k]) || k)}</td><td class="num">${g.signals}</td><td class="num">${g.scored}</td><td class="num pos">${g.targets}</td><td class="num neg">${g.stops}</td><td class="num">${g.timeouts}</td><td class="num dim">${g.not_filled}</td><td class="num">${g.hit_rate === null ? "–" : g.hit_rate + "%"}</td><td class="num ${sgn(g.avg_r)}">${rr(g.avg_r)}</td></tr>`; }).join("") +
     `</tbody></table></div>`;
 }
-/* Outcome: did price reach the suggested target the same day? (live signals; set by the 10 s refresh and Score).
+/* Outcome: did price reach the suggested target within the signal day + 3 sessions (T+3)? Live signals; hit is set by the 10 s refresh, failed by the end-of-day sweep / Score.
    Older / replay rows fall back to the R-scored outcome. */
 function outcomeCell(x) {
   const m = x.metrics || {}, scored = x.outcome ? esc(x.outcome.replace("_", " ")) : "";
@@ -1239,7 +1239,7 @@ function outcomeCell(x) {
     return `<span class="pill pill--target">Target hit${at}</span>`;
   }
   if (m.target_status === "failed") return `<span class="pill pill--stop">Failed</span>`;
-  if (x.source === "live" && x.target && x.trade_date === istDate()) return `<span class="pill pill--watching">Open</span>`;
+  if (x.source === "live" && x.target && (Date.parse(istDate()) - Date.parse(x.trade_date)) / 864e5 <= 7) return `<span class="pill pill--watching">Open</span>`;
   return scored ? `<span class="pill pill--${OUTCOME_PILL[x.outcome] || "closed"}">${scored}</span>` : '<span class="dim">–</span>';
 }
 function renderSignals(data) {

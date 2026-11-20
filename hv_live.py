@@ -127,21 +127,100 @@ def risk_snapshot(cfg: HVConfig, now: datetime) -> tuple[dict, dict, list[dict]]
     return day, period, todays
 
 
-def _resolve_targets(trade_date: date, now: datetime, bars: dict, last_prices: dict) -> int:
-    """Marks the day's live signals whose suggested target price was reached
-    ('hit') or never reached by the close ('failed'), from the candles the
-    caller already has. A symbol without candles is left alone, so a missing
-    fetch is never turned into a failure. Returns how many were updated."""
-    session_end = datetime.combine(trade_date, dt_time(15, 30))
+TARGET_WINDOW_SESSIONS = 3   # a target reached up to T+3 still counts as a pass
+SESSION_CLOSE = dt_time(15, 30)
+
+
+def _is_trading_day(d: date) -> bool:
+    if d.weekday() >= 5:
+        return False
+    try:
+        return not db_store.is_nse_holiday(d)
+    except Exception:
+        return True
+
+
+def target_deadline(trade_date: date) -> datetime:
+    """Close of the TARGET_WINDOW_SESSIONS-th trading session after the
+    signal's day (T+3) -- the last moment the target can still be reached."""
+    d, n = trade_date, 0
+    while n < TARGET_WINDOW_SESSIONS:
+        d += timedelta(days=1)
+        if _is_trading_day(d):
+            n += 1
+    return datetime.combine(d, SESSION_CLOSE)
+
+
+def _pending_target_signals(today: date) -> list[dict]:
+    """Live signals with a target and no hit / failed status yet, from the
+    last two weeks (more than enough for T+3 plus holidays)."""
+    return [s for s in db_store.list_hv_signals(today - timedelta(days=14), today, source="live")
+            if s["target"] and not (s["metrics"] or {}).get("target_status")]
+
+
+def _resolve_targets(today: date, now: datetime, bars: dict, last_prices: dict) -> int:
+    """Intraday: marks any pending signal (today's or an earlier one still
+    inside its T+3 window) 'hit' the moment today's candles / live price reach
+    its target. Never marks 'failed' -- that is the end-of-day sweep's job.
+    A symbol without candles is left alone. Returns how many were updated."""
     updates = []
-    for s in db_store.list_hv_signals(trade_date, trade_date, source="live"):
-        if not s["target"] or (s["metrics"] or {}).get("target_status") or s["symbol"] not in bars:
+    for s in _pending_target_signals(today):
+        if s["symbol"] not in bars:
             continue
         r = target_status({"signal_at": to_ist_naive(s["signal_at"]), "target": s["target"]}, bars[s["symbol"]],
-                          last_prices.get(s["symbol"]), now, session_end)
+                          last_prices.get(s["symbol"]), now, datetime.max)
         if r:
-            updates.append({"id": s["id"], "status": r["status"],
-                            "at": r["at"].isoformat(timespec="seconds") if r.get("at") else None})
+            updates.append({"id": s["id"], "patch": {"target_status": r["status"],
+                                                     "target_hit_at": r["at"].isoformat(timespec="seconds")}})
+    db_store.save_hv_signal_target_status(updates)
+    return len(updates)
+
+
+def sweep_targets(kite: KiteConnect, now: datetime) -> int:
+    """End-of-day check of every pending signal from the last sessions, from
+    1-minute candles covering the signal's day through today: reached ->
+    'hit'; not reached and T+3 has closed -> 'failed'; otherwise it stays
+    pending. After the close each signal is swept once a day (marked with
+    `target_checked`), so the live refresh doesn't repeat it."""
+    today = now.date()
+    after_close = now >= datetime.combine(today, SESSION_CLOSE)
+    pending = [s for s in _pending_target_signals(today)
+               if (s["metrics"] or {}).get("target_checked") != today.isoformat()]
+    if not pending:
+        return 0
+    end = min(now, datetime.combine(today, SESSION_CLOSE))
+    by_symbol: dict[str, list[dict]] = {}
+    for s in pending:
+        by_symbol.setdefault(s["symbol"], []).append(s)
+    contexts: dict[str, dict] = {}
+    pacer, updates = _Pacer(), []
+    for sym, sigs in by_symbol.items():
+        first = min(date.fromisoformat(s["trade_date"]) for s in sigs)
+        token = None
+        for s in sigs:
+            c = (contexts.setdefault(s["trade_date"], db_store.load_watch_context(date.fromisoformat(s["trade_date"])))
+                 .get(sym))
+            if c and c.get("instrument_token"):
+                token = c["instrument_token"]
+                break
+        if not token:
+            continue
+        pacer.wait()
+        try:
+            bars = fetch_candles(kite, token, datetime.combine(first, dt_time(9, 15)), end, "minute")
+        except Exception as e:
+            logger.warning("Target sweep candles failed for %s: %s", sym, e)
+            continue
+        for s in sigs:
+            r = target_status({"signal_at": to_ist_naive(s["signal_at"]), "target": s["target"]}, bars, None, now,
+                              target_deadline(date.fromisoformat(s["trade_date"])))
+            if r:
+                patch = {"target_status": r["status"]}
+                if r.get("at"):
+                    patch["target_hit_at"] = r["at"].isoformat(timespec="seconds")
+                updates.append({"id": s["id"], "patch": patch})
+            elif after_close:
+                updates.append({"id": s["id"], "patch": {"target_checked": today.isoformat()}})
     db_store.save_hv_signal_target_status(updates)
     return len(updates)
 
@@ -219,6 +298,8 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
 
     try:  # signal targets reached / missed -- a record, never a reason to fail the refresh
         _resolve_targets(today, now, bars, {sym: (quotes.get(sym) or {}).get("last_price") for sym in symbols})
+        if now.time() >= SESSION_CLOSE and _is_trading_day(today):
+            sweep_targets(kite, now)
     except Exception as e:
         logger.warning("Could not update signal target status: %s", e)
 
@@ -236,36 +317,13 @@ def live_snapshot(kite: KiteConnect, cfg: HVConfig, focus: list[str], strip: lis
 
 # --------------------------------------------------------------- scoring
 
-def _resolve_day_targets(kite: KiteConnect, trade_date: date, now: datetime) -> int:
-    """Target status for a day's signals still unresolved (e.g. the tab was
-    closed before the close), from that day's full 1-minute candles."""
-    pending = [s for s in db_store.list_hv_signals(trade_date, trade_date, source="live")
-               if s["target"] and not (s["metrics"] or {}).get("target_status")]
-    if not pending:
-        return 0
-    contexts = db_store.load_watch_context(trade_date)
-    start = datetime.combine(trade_date, dt_time(9, 15))
-    end = min(now, datetime.combine(trade_date, dt_time(15, 30)))
-    pacer, bars = _Pacer(), {}
-    for sym in {s["symbol"] for s in pending}:
-        c = contexts.get(sym)
-        if not c:
-            continue
-        pacer.wait()
-        try:
-            bars[sym] = fetch_candles(kite, c["instrument_token"], start, end, "minute")
-        except Exception as e:
-            logger.warning("Target-status candles failed for %s: %s", sym, e)
-    return _resolve_targets(trade_date, now, bars, {})
-
-
 def score_day(kite: KiteConnect, cfg: HVConfig, trade_date: date) -> dict:
     """Scores the day's unscored live signals. An entry signal is scored
     once its 30-minute window has passed; an armed one is 'confirmed' if an
     entry with the same episode followed, else 'no_confirm' after the
     entry window closes."""
     now = now_ist()
-    targets = _resolve_day_targets(kite, trade_date, now)
+    targets = sweep_targets(kite, now)
     signals = [s for s in db_store.list_hv_signals(trade_date, trade_date, source="live") if not s["outcome"]]
     if not signals:
         return {"scored": 0, "targets": targets}

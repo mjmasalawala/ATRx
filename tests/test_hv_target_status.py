@@ -39,6 +39,17 @@ def test_open_until_the_session_ends_then_failed():
     assert target_status(SIG, bars, 103, CLOSE, CLOSE) == {"status": "failed"}
 
 
+def test_multi_day_window_a_later_days_bar_counts():
+    nxt = datetime(2026, 11, 20, 11, 0)
+    later = {"ts": nxt, "high": 106.0, "low": 104.0, "open": 104.0, "close": 105.0}
+    deadline = datetime(2026, 11, 24, 15, 30)
+    assert target_status(SIG, [bar(9, 41, 104), later], None, nxt, deadline) == {"status": "hit", "at": nxt}
+
+
+def test_multi_day_window_not_failed_before_the_deadline():
+    assert target_status(SIG, [bar(9, 41, 104)], 103, datetime(2026, 11, 23, 15, 45), datetime(2026, 11, 24, 15, 30)) is None
+
+
 def test_no_target_no_status():
     assert target_status({**SIG, "target": None}, [bar(10, 0, 200)], None, CLOSE, CLOSE) is None
 
