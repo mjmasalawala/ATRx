@@ -324,7 +324,7 @@
     <div id="replayInfo" class="hint" style="margin-top:8px">Replay runs the same detector over about the last 60 days of 1-minute data (days with 10+ earlier sessions), one stock at a time. Re-running replaces that stock's replay rows. No live quote exists in a replay, so the spread and circuit checks are skipped.</div>
   </div>
   <div id="sigSummary" class="section card"></div>
-  <div class="section card"><h3>Signals</h3><div class="table-wrap"><table id="sigTable"></table></div></div>
+  <div class="section card"><h3>Signals</h3><div id="sigFilters" style="margin:6px 0 10px"><span class="chip" id="sigEntryOnly" role="button" tabindex="0" aria-pressed="false">Entry zone</span></div><div class="table-wrap"><table id="sigTable"></table></div></div>
 </div>
 
 <div id="toasts"></div>
@@ -369,7 +369,7 @@ let DAY = { gift_nifty: null, note: "", focus: [] };
 let ROWS = {};            // symbol -> { focus, bias, tags[], note, pre_meta }
 let CAND = null;          // last /api/hv-candidates response
 let JOURNAL = null;       // last /api/hv-journal response
-let JOURNAL_DAYS = 30, SIG_DAYS = 30;
+let JOURNAL_DAYS = 30, SIG_DAYS = 30, SIG_ENTRY_ONLY = false, SIG_DATA = null;
 let LIVE = null;          // last /api/hv-live response
 let LOGGED_IN = false;
 let pollTimer = null, saveTimer = null;
@@ -1250,20 +1250,29 @@ function outcomeCell(x) {
   return scored ? `<span class="pill pill--${OUTCOME_PILL[x.outcome] || "closed"}">${scored}</span>` : '<span class="dim">–</span>';
 }
 function renderSignals(data) {
+  SIG_DATA = data;
   const s = data.summary;
   $("sigSummary").innerHTML = `<h2>What the signals did</h2><p class="sub">Entry signals only${s.rejected ? ` (${s.rejected} rejected by their own checks are left out)` : ""}. Hit rate = targets ÷ (targets + stops + time-outs). Setup armed that went on to confirm: ${s.armed.confirm_rate === null ? "–" : s.armed.confirm_rate + "%"} of ${s.armed.count}.</p>` +
     (groupTable("By what you did", s.by_action, { taken: "Taken", skipped: "Skipped", lapsed: "Lapsed", pending: "Not scored / undecided", replay: "Replay" }) || `<p class="dim">No entry signals in this range yet.</p>`) +
     groupTable("By confirmation", s.by_confirmation) + groupTable("By day type", s.by_day_type);
   $("sigTable").innerHTML = `<thead><tr><th class="l">Date</th><th class="l">Time</th><th class="l">Symbol</th><th class="l">Source</th><th class="l">Stage</th><th class="l">Day type</th><th class="l">Confirmation</th><th>Entry</th><th>Stop</th><th>Target</th><th class="l">Action</th><th class="l">Outcome</th><th>R</th><th>Best · worst</th></tr></thead><tbody>` +
-    (data.signals.map(x => `<tr><td class="l num">${esc(x.trade_date)}</td><td class="l num">${new Date(x.signal_at).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}</td>
+    (data.signals.filter(x => !SIG_ENTRY_ONLY || x.stage === "entry").map(x => `<tr><td class="l num">${esc(x.trade_date)}</td><td class="l num">${new Date(x.signal_at).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}</td>
       <td class="sym">${esc(x.symbol)}</td><td class="l dim">${esc(x.source)}</td><td class="l">${x.stage === "entry" ? "Entry zone" : "Setup armed"}</td>
       <td class="l">${esc(x.day_type || "")}</td><td class="l">${esc((x.metrics || {}).confirmation || "")}</td>
       <td class="num">${num2(x.entry)}</td><td class="num">${num2(x.stop)}</td><td class="num">${num2(x.target)}</td>
       <td class="l">${esc(x.action || "")}${x.skip_reason ? ` <span class="dim">(${esc(x.skip_reason)})</span>` : ""}</td>
       <td class="l">${outcomeCell(x)}</td>
       <td class="num ${sgn(x.outcome_r)}">${rr(x.outcome_r)}</td><td class="num dim">${x.mfe_r === null ? "–" : rr(x.mfe_r) + " · " + rr(x.mae_r)}</td></tr>`).join("") ||
-      `<tr><td colspan="14" class="dim l">No signals in this range yet.</td></tr>`) + `</tbody>`;
+      `<tr><td colspan="14" class="dim l">${SIG_ENTRY_ONLY ? "No Entry zone signals" : "No signals"} in this range yet.</td></tr>`) + `</tbody>`;
 }
+function toggleEntryOnly() {
+  SIG_ENTRY_ONLY = !SIG_ENTRY_ONLY;
+  $("sigEntryOnly").classList.toggle("on", SIG_ENTRY_ONLY);
+  $("sigEntryOnly").setAttribute("aria-pressed", SIG_ENTRY_ONLY);
+  if (SIG_DATA) renderSignals(SIG_DATA);
+}
+$("sigEntryOnly").addEventListener("click", toggleEntryOnly);
+$("sigEntryOnly").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleEntryOnly(); } });
 $("sigRangeBtns").addEventListener("click", e => {
   const b = e.target.closest("button[data-days]"); if (!b) return;
   SIG_DAYS = parseInt(b.dataset.days, 10);

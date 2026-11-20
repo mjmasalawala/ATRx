@@ -89,7 +89,7 @@ Four tabs, self-contained like every other page, with a shared `.card` style def
 1. **Pre-open** — GIFT Nifty input and implied gap, extra-ticker box, ranked table with tag chips, bias, note, "focus" checkbox (autosaved).
 2. **Live** — Nifty state line, one card per focus ticker (stage pill, checklist: day type, stretch, exhaustion with RSI/volume/wick/level, confirmation, spread, band distance; blocked reasons; suggested order with I'm in / Skip; in-trade prompts and warnings with Closed / Add second leg), an "Also setting up" strip for the rest of the shortlist, and a day summary after the flat time or a lockout. Alerts: soft chime on Setup armed, loud on Entry zone and exit warnings, once per symbol/episode/day.
 3. **Journal & dashboard** — Today summary (trades, win rate, R, best/worst, rule breaks, today's signals), headline **net profit** and total R, cumulative net-P&L line, per-day table (R, W/L, rule breaks), and the position list (stop, R, rule-broken badge) with editable tag / planned stop / rating / rule broken / note.
-4. **Signals** — signal summary tables and the signal list with outcome badges; Score today; Replay.
+4. **Signals** (an "Entry zone" pill above the table filters its rows to `stage = entry`; the summary tables are unaffected) — signal summary tables and the signal list with outcome badges; Score today; Replay.
 
 ## Reminder for the user — analytics to build later
 

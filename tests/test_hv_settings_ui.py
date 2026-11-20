@@ -54,3 +54,8 @@ def test_page_has_the_rejected_signal_mirror():
     assert "function isRejectedSignal(x)" in HTML
     assert "suggestion_ok === false" in HTML and "x.target <= x.entry" in HTML
     assert ">Rejected</span>" in HTML
+
+
+def test_signals_table_has_an_entry_zone_filter_pill():
+    assert 'id="sigEntryOnly"' in HTML and ">Entry zone</span>" in HTML
+    assert 'x => !SIG_ENTRY_ONLY || x.stage === "entry"' in HTML
